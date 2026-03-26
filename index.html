@@ -1,0 +1,1980 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>视错觉实验集成终端 v4.1</title>
+<style>
+    :root { --nav-w: 260px; --accent: #2563eb; --sidebar-bg: #1e293b; --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', system-ui, sans-serif; overflow: hidden; background: #f1f5f9; }
+    
+    /* 布局容器 */
+    .wrapper { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+    
+    /* 左侧菜单 - 增加过渡动画 */
+    .sidebar { 
+        width: var(--nav-w); 
+        background: var(--sidebar-bg); 
+        color: white; 
+        display: flex; 
+        flex-direction: column; 
+        flex-shrink: 0; 
+        z-index: 100; 
+        transition: var(--transition);
+        position: relative;
+    }
+    
+    /* 收起状态的侧边栏 */
+    .sidebar.collapsed { margin-left: calc(var(--nav-w) * -1); }
+    
+    .sidebar-header { padding: 25px 20px; border-bottom: 1px solid #334155; white-space: nowrap; }
+    .sidebar-header h1 { margin: 0; font-size: 18px; color: #f8fafc; }
+    
+    .nav-list { flex: 1; overflow-y: auto; padding: 10px 0; }
+    .nav-item { padding: 15px 25px; cursor: pointer; color: #94a3b8; font-size: 14px; border-left: 4px solid transparent; transition: all 0.2s; white-space: nowrap; }
+    .nav-item:hover { background: #2d3748; color: white; }
+    .nav-item.active { background: #0f172a; color: white; border-left-color: var(--accent); }
+    
+    /* 切换按钮 - 浮动在侧边栏边缘 */
+    .toggle-btn {
+        position: absolute;
+        right: -12px;
+        top: 20px;
+        width: 24px;
+        height: 24px;
+        background: var(--accent);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        z-index: 101;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        border: 2px solid #f1f5f9;
+        font-size: 12px;
+        transition: var(--transition);
+    }
+    .sidebar.collapsed .toggle-btn { right: -35px; border-color: white; }
+
+    /* 右侧主视图 */
+    .main-view { flex: 1; position: relative; display: flex; flex-direction: column; overflow: hidden; background: #f1f5f9; }
+    iframe { width: 100%; height: 100%; border: none; }
+    
+    .welcome { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #f8fafc; text-align: center; }
+</style>
+
+<div class="wrapper">
+    <aside class="sidebar" id="sidebar">
+        <div class="toggle-btn" id="toggleBtn" onclick="toggleSidebar()">◀</div>
+        
+        <div class="sidebar-header">
+            <h1>视错觉实验科研集成终端</h1>
+            <small style="color: #64748b;">v4.1 Professional</small>
+        </div>
+        <div class="nav-list" id="navList"></div>
+    </aside>
+
+    <main class="main-view" id="mainView">
+        <div id="welcome" class="welcome">
+            <h2 style="color: #1e293b;">系统就绪</h2>
+            <p style="color: #64748b;">请选择左侧实验项目以开始科研观测</p>
+            <p style="font-size: 12px; color: #94a3b8;">(点击侧边蓝色按钮可收起菜单)</p>
+        </div>
+    </main>
+</div>
+
+<script>
+    // 侧边栏收缩逻辑
+    function toggleSidebar() {
+        const sidebar = document.getElementById('sidebar');
+        const btn = document.getElementById('toggleBtn');
+        sidebar.classList.toggle('collapsed');
+        btn.innerText = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+    }
+
+    // 1. 初始化存储对象
+    const STORAGE = {};
+
+    // 2. 菜单配置
+    const EXPS = [
+        {id:'muller', n:'1. 穆勒-莱尔 (Müller-Lyer)'}, 
+        {id:'ponzo', n:'2. 庞诺错觉 (Ponzo)'}, 
+        {id:'ebbinghaus', n:'3. 艾宾浩斯 (Ebbinghaus)'}, 
+        {id:'hering', n:'4. 黑林错觉 (Hering)'},
+        {id:'zollner', n:'5. 策尔纳错觉 (Zöllner)'}, 
+        {id:'hermann', n:'6. 赫曼方格 (Hermann)'},
+        {id:'fraser', n:'7. 弗雷泽螺旋 (Fraser)'}
+    ];
+
+    // 3. 生成菜单逻辑
+    const navList = document.getElementById('navList');
+    EXPS.forEach(exp => {
+        const div = document.createElement('div');
+        div.className = 'nav-item';
+        div.id = 'nav-' + exp.id;
+        div.innerHTML = exp.n;
+        div.onclick = () => loadExp(exp.id);
+        navList.appendChild(div);
+    });
+
+    // 4. 加载实验函数
+    function loadExp(id) {
+        if (!STORAGE[id]) {
+            alert("该模块代码尚未载入，请粘贴对应的 STORAGE 数据。");
+            return;
+        }
+
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        document.getElementById('nav-' + id).classList.add('active');
+        document.getElementById('welcome').style.display = 'none';
+
+        const main = document.getElementById('mainView');
+        const oldIframe = main.querySelector('iframe');
+        if (oldIframe) oldIframe.remove();
+        
+        const ifr = document.createElement('iframe');
+        main.appendChild(ifr);
+        
+        const doc = ifr.contentWindow.document;
+        doc.open();
+        doc.write(STORAGE[id]);
+        doc.close();
+        
+        // 可选：加载实验后自动收起菜单，给实验腾地方
+        // if(window.innerWidth < 1200) toggleSidebar(); 
+    }
+
+    // -------------------------------------------------------------------------
+    // 下面开始注入模块数据 (请确保这部分脚本完整)
+    // -------------------------------------------------------------------------
+
+    STORAGE['muller'] = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1200px; --stage-h: 550px; --primary: #2563eb; --success: #10b981; --danger: #ef4444; --gray: #64748b; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; overflow-x: auto; }
+        .top-container { display: flex; gap: 15px; width: 1650px; height: var(--stage-h); margin-bottom: 15px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: white; border: 2px solid #1e293b; border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: space-evenly; }
+        .line-container { position: relative; display: flex; align-items: center; justify-content: center; width: 450px; height: 100%; }
+        .main-line { position: absolute; z-index: 10; border-radius: 2px; }
+        .arrow { position: absolute; transform-origin: center left; z-index: 5; border-radius: 2px; }
+        .data-panel { flex: 1; background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; min-width: 0; height: 100%; box-sizing: border-box;}
+        .filter-zone { background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 11px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; border: 1px solid #e2e8f0; }
+        .table-wrapper { flex: 1; overflow-y: auto; border: 1px solid #f1f5f9; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+        th, td { padding: 8px 2px; text-align: center; border-bottom: 1px solid #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #f1f5f9; font-weight: bold; color: #475569; position: sticky; top: 0; z-index: 2; }
+        .col-hidden { display: none !important; }
+        .bottom-container { display: flex; gap: 12px; width: 1650px; align-items: stretch; margin-bottom: 20px;}
+        .panel-section { background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-vars { flex: 3; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px 25px; }
+        .panel-adjust { flex: 1.2; background: #f0f7ff; border: 1px solid #bfdbfe; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.8; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+        .lock-btn { cursor: pointer; border: 1px solid #ddd; background: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .input-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+        input[type="range"] { flex: 1; accent-color: var(--primary); height: 6px; cursor: pointer; }
+        .val-box { width: 48px; text-align: center; font-size: 14px; font-weight: bold; border: 1px solid #cbd5e1; border-radius: 4px; color: var(--primary); padding: 3px 0; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 14px; width: 100%; }
+        label { font-size: 14px; font-weight: 700; color: #1e293b; }
+        .btn { padding: 12px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; color: white; transition: 0.2s; font-size: 14px; }
+        .btn-save { background: var(--primary); height: 65px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: white; color: var(--danger); border: 1px solid var(--danger); }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 5px 0 15px 0;">穆勒-莱尔（Müller-Lyer）视错觉实验平台</h2>
+    <div class="top-container">
+        <div id="stage">
+            <div id="container-ref" class="line-container"><div id="line-ref" class="main-line"></div><div id="ref-a1" class="arrow"></div><div id="ref-a2" class="arrow"></div><div id="ref-a3" class="arrow"></div><div id="ref-a4" class="arrow"></div></div>
+            <div id="container-test" class="line-container"><div id="line-test" class="main-line"></div><div id="test-a1" class="arrow"></div><div id="test-a2" class="arrow"></div><div id="test-a3" class="arrow"></div><div id="test-a4" class="arrow"></div></div>
+        </div>
+        <div class="data-panel">
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-c1" checked onchange="updateTable()"> 颜色</label>
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 角度</label>
+                <label><input type="checkbox" id="f-2" checked onchange="updateTable()"> 粗细</label>
+                <label><input type="checkbox" id="f-3" checked onchange="updateTable()"> 箭长</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 基准</label>
+                <label><input type="checkbox" id="f-5" checked onchange="updateTable()"> 匹配</label>
+            </div>
+            <div class="table-wrapper">
+                <table id="main-table">
+                    <thead><tr><th style="width:30px">序</th><th id="th-c1">颜色</th><th id="th-1">角度</th><th id="th-2">粗细</th><th id="th-3">箭长</th><th id="th-4">基准</th><th id="th-5">匹配</th><th style="width:50px">错觉度</th><th style="width:30px">删</th></tr></thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-section panel-vars">
+            <div><label>实验颜色</label><select id="v-color" onchange="render()"><option value="#000000">黑色 (Black)</option><option value="#ef4444">红色 (Red)</option><option value="#10b981">绿色 (Green)</option><option value="#2563eb">蓝色 (Blue)</option></select>
+                <div style="margin-top:15px"><div style="display:flex; justify-content:space-between"><label>线段粗细</label><button class="lock-btn" id="lock-v-thick" onclick="toggleLock('v-thick')">锁定</button></div><div class="input-row"><input type="range" id="v-thick-s" min="1" max="5" value="2"><input type="number" id="v-thick-n" class="val-box" value="2"></div></div>
+            </div>
+            <div><div style="display:flex; justify-content:space-between"><label>箭头夹角 (°)</label><button class="lock-btn" id="lock-v-angle" onclick="toggleLock('v-angle')">锁定</button></div><div class="input-row"><input type="range" id="v-angle-s" min="1" max="179" value="45"><input type="number" id="v-angle-n" class="val-box" value="45"></div><div style="margin-top:15px"><div style="display:flex; justify-content:space-between"><label>箭头长度</label><button class="lock-btn" id="lock-v-arrow-l" onclick="toggleLock('v-arrow-l')">锁定</button></div><div class="input-row"><input type="range" id="v-arrow-l-s" min="15" max="50" value="30"><input type="number" id="v-arrow-l-n" class="val-box" value="30"></div></div></div>
+            <div><div style="display:flex; justify-content:space-between"><label>基准线长</label><button class="lock-btn" id="lock-v-ref-l" onclick="toggleLock('v-ref-l')">锁定</button></div><div class="input-row"><input type="range" id="v-ref-l-s" min="150" max="350" value="250"><input type="number" id="v-ref-l-n" class="val-box" value="250"></div><div style="margin-top:15px"><label>自动步进</label><div class="input-row"><input type="number" id="s-step" value="0" class="val-box" style="width:100%"></div></div></div>
+            <div style="background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px dashed #cbd5e1; font-size:12px;"><p style="margin:0; line-height:1.6;"><b>科研提示：</b><br>• 保存后基准线长按步进值自动增减。<br>• 错觉度=(匹配-基准)/基准</p></div>
+        </div>
+        <div class="panel-section panel-adjust">
+            <h3 style="margin:0 0 10px 0; font-size:14px; color:var(--primary);">被试长度匹配调节</h3>
+            <input type="range" id="l-slider" min="50" max="550" value="200" step="1" style="width:100%; height:25px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--gray); margin-top: 10px;"><span>更短 [←]</span><span style="color:var(--primary); font-weight:bold;">调节右侧图形</span><span>更长 [→]</span></div>
+        </div>
+        <div class="panel-section panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">确认保存 (Enter)</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出 Excel</button>
+            <button class="btn btn-reset" onclick="clearTable()">清空</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-angle': false, 'v-thick': false, 'v-arrow-l': false, 'v-ref-l': false };
+        function bindSync(id) {
+            const s = document.getElementById(id + '-s'), n = document.getElementById(id + '-n');
+            s.oninput = () => { n.value = s.value; render(); };
+            n.oninput = () => { s.value = n.value; render(); };
+        }
+        ['v-angle', 'v-thick', 'v-arrow-l', 'v-ref-l'].forEach(bindSync);
+        document.getElementById('l-slider').oninput = render;
+
+        function toggleLock(id) {
+            activeLocks[id] = !activeLocks[id];
+            const btn = document.getElementById('lock-' + id);
+            btn.classList.toggle('active');
+            btn.innerText = activeLocks[id] ? "🔒" : "锁定";
+            document.getElementById(id + '-s').disabled = activeLocks[id];
+            document.getElementById(id + '-n').disabled = activeLocks[id];
+        }
+
+        function render() {
+            const angle = parseFloat(document.getElementById('v-angle-s').value);
+            const thick = parseFloat(document.getElementById('v-thick-s').value);
+            const arrowL = parseFloat(document.getElementById('v-arrow-l-s').value);
+            const refL = parseFloat(document.getElementById('v-ref-l-s').value);
+            const testL = parseFloat(document.getElementById('l-slider').value);
+            const color = document.getElementById('v-color').value;
+            drawMuller('ref', refL, thick, arrowL, angle, color, true);
+            drawMuller('test', testL, thick, arrowL, angle, color, false);
+        }
+
+        function drawMuller(type, lineLen, thick, arrowLen, angle, color, isOutward) {
+            const line = document.getElementById(\`line-\${type}\`);
+            line.style.width = lineLen + 'px'; line.style.height = thick + 'px'; line.style.backgroundColor = color;
+            line.style.left = \`calc(50% - \${lineLen/2}px)\`;
+            [1,2,3,4].forEach((i, idx) => {
+                const a = document.getElementById(\`\${type}-a\${i}\`);
+                a.style.width = arrowLen + 'px'; a.style.height = thick + 'px'; a.style.backgroundColor = color;
+                const isLeftEnd = idx < 2; const isUpper = idx % 2 === 0;
+                let rot = isOutward ? (isLeftEnd ? (isUpper ? -angle : angle) : (isUpper ? 180+angle : 180-angle)) : (isLeftEnd ? (isUpper ? 180-angle : 180+angle) : (isUpper ? angle : -angle));
+                a.style.left = isLeftEnd ? \`calc(50% - \${lineLen/2}px)\` : \`calc(50% + \${lineLen/2}px)\`;
+                a.style.transform = \`rotate(\${rot}deg)\`;
+            });
+        }
+
+        function doRecord() {
+            // 将 id 改为序号，直接根据 results 的长度自增
+            var data = {
+                "序号": results.length + 1,
+                "实验颜色": document.getElementById('v-color').selectedOptions[0].text,
+                "箭头角度": document.getElementById('v-angle-s').value + "°",
+                "线段粗细": document.getElementById('v-thick-s').value + "px",
+                "箭头长度": document.getElementById('v-arrow-l-s').value + "px",
+                "基准长度": document.getElementById('v-ref-l-s').value + "px",
+                "匹配长度": document.getElementById('l-slider').value + "px"
+            };
+            var r = parseFloat(data["基准长度"]), t = parseFloat(data["匹配长度"]);
+            data["错觉强度"] = (((t-r)/r)*100).toFixed(1) + "%";
+            
+            results.push(data); 
+            updateTable();
+            
+            if(!activeLocks['v-ref-l']) {
+                var step = parseFloat(document.getElementById('s-step').value);
+                if(step !== 0) {
+                    var next = Math.max(150, Math.min(350, parseFloat(document.getElementById('v-ref-l-s').value) + step));
+                    document.getElementById('v-ref-l-s').value = next; 
+                    document.getElementById('v-ref-l-n').value = next;
+                }
+            }
+            render();
+        }
+
+        function updateTable() {
+            var f = { 
+                c1: document.getElementById('f-c1').checked, 
+                1: document.getElementById('f-1').checked, 
+                2: document.getElementById('f-2').checked, 
+                3: document.getElementById('f-3').checked, 
+                4: document.getElementById('f-4').checked, 
+                5: document.getElementById('f-5').checked 
+            };
+            ['c1',1,2,3,4,5].forEach(function(i) { 
+                var th = document.getElementById('th-'+i);
+                if(th) th.className = f[i] ? '' : 'col-hidden';
+            });
+            
+            var tbody = document.getElementById('log'); 
+            tbody.innerHTML = "";
+            
+            results.forEach(function(r, i) {
+                // 确保每一行渲染时都能读取中文 Key
+                var row = '<tr><td>' + r["序号"] + '</td>' +
+                    '<td class="' + (f.c1?'':'col-hidden') + '">' + r["实验颜色"] + '</td>' +
+                    '<td class="' + (f[1]?'':'col-hidden') + '">' + r["箭头角度"] + '</td>' +
+                    '<td class="' + (f[2]?'':'col-hidden') + '">' + r["线段粗细"] + '</td>' +
+                    '<td class="' + (f[3]?'':'col-hidden') + '">' + r["箭头长度"] + '</td>' +
+                    '<td class="' + (f[4]?'':'col-hidden') + '">' + r["基准长度"] + '</td>' +
+                    '<td class="' + (f[5]?'':'col-hidden') + '"><b>' + r["匹配长度"] + '</b></td>' +
+                    '<td style="color:var(--primary); font-weight:bold">' + r["错觉强度"] + '</td>' +
+                    '<td><button onclick="deleteRow(' + r["序号"] + ')" style="border:none; background:none; color:var(--danger); cursor:pointer;">×</button></td></tr>';
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+        }
+
+        function deleteRow(targetNo) { 
+            // 过滤掉选中的序号，并重新排列剩余数据的序号
+            results = results.filter(function(r) { return r["序号"] !== targetNo; }); 
+            results.forEach(function(r, i) { r["序号"] = i + 1; }); 
+            updateTable(); 
+        }
+
+        function clearTable() { 
+            if(confirm("确定清空数据？")) { results = []; updateTable(); } 
+        }
+
+        function doExport() { 
+            if (results.length === 0) return alert("无数据");
+            var ws = XLSX.utils.json_to_sheet(results); 
+            var wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "MüllerLyer");
+            XLSX.writeFile(wb, "ExpData_ML_" + new Date().getTime() + ".xlsx");
+        }
+
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 1; render(); e.preventDefault(); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 1; render(); e.preventDefault(); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = render;
+    <\/script>
+</body>
+</html>`;
+
+// 模块2-庞诺
+const ponzo_raw = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1000px; --stage-h: 600px; --primary: #2563eb; --success: #10b981; --danger: #ef4444; --gray: #64748b; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; }
+        .top-container { display: flex; gap: 15px; width: 1480px; height: var(--stage-h); margin-bottom: 15px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: white; border: 2px solid #1e293b; border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        #rails-container { position: absolute; top: 0; left: 50%; width: 0; height: 100%; }
+        .rail { position: absolute; height: 1500px; top: -200px; transform-origin: top center; z-index: 1; }
+        .line { position: absolute; border-radius: 6px; z-index: 10; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        #line-test { bottom: 100px; }
+        .data-panel { flex: 1; background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; min-width: 0; }
+        .filter-zone { background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 10px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; border: 1px solid #e2e8f0; }
+        .table-wrapper { flex: 1; overflow-y: auto; border: 1px solid #f1f5f9; }
+        table { width: 100%; border-collapse: collapse; font-size: 9px; table-layout: fixed; }
+        th, td { padding: 6px 1px; text-align: center; border-bottom: 1px solid #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #f1f5f9; font-weight: bold; color: #475569; position: sticky; top: 0; z-index: 2; }
+        .col-hidden { display: none !important; }
+        .bottom-container { display: flex; gap: 12px; width: 1480px; align-items: stretch; }
+        .panel-section { background: white; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-vars { flex: 3; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px 15px; }
+        .panel-adjust { flex: 1; background: #f8faff; border: 1px solid #c7d2fe; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.6; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+        .lock-btn { cursor: pointer; border: 1px solid #ddd; background: #fff; padding: 1px 5px; border-radius: 4px; font-size: 9px; }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .input-row { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        input[type="range"] { flex: 1; accent-color: var(--primary); height: 4px; }
+        .val-box { width: 38px; text-align: center; font-size: 10px; border: 1px solid #ddd; border-radius: 4px; }
+        select { padding: 2px; border-radius: 4px; border: 1px solid #ddd; font-size: 10px; }
+        label { font-size: 11px; font-weight: 600; color: #334155; }
+        .btn { padding: 10px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-save { background: var(--primary); height: 50px; }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: white; color: var(--danger); border: 1px solid var(--danger); }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 8px 0;">庞诺视错觉（Ponzo Illusion）科研终端</h2>
+    <div class="top-container">
+        <div id="stage">
+            <div id="rails-container"></div>
+            <div id="line-ref" class="line"></div>
+            <div id="line-test" class="line"></div>
+        </div>
+        <div class="data-panel">
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-c1" checked onchange="updateTable()"> 射线色</label>
+                <label><input type="checkbox" id="f-c2" checked onchange="updateTable()"> 线条色</label>
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 张角</label>
+                <label><input type="checkbox" id="f-2" checked onchange="updateTable()"> 射线数</label>
+                <label><input type="checkbox" id="f-rw" checked onchange="updateTable()"> 射线宽</label>
+                <label><input type="checkbox" id="f-3" checked onchange="updateTable()"> 顶点距</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 深度</label>
+                <label><input type="checkbox" id="f-5" checked onchange="updateTable()"> 基准长</label>
+                <label><input type="checkbox" id="f-6" checked onchange="updateTable()"> 匹配长</label>
+                <label><input type="checkbox" id="f-w1" checked onchange="updateTable()"> 基准宽</label>
+                <label><input type="checkbox" id="f-w2" checked onchange="updateTable()"> 测试宽</label>
+            </div>
+            <div class="table-wrapper">
+                <table id="main-table">
+                    <thead>
+                        <tr>
+                            <th style="width:25px">序</th>
+                            <th id="th-c1">射线色</th><th id="th-c2">线条色</th>
+                            <th id="th-1">张角</th><th id="th-2">射线</th><th id="th-rw">射线宽</th>
+                            <th id="th-3">顶点距</th><th id="th-4">深度</th><th id="th-5">基准长</th>
+                            <th id="th-6">匹配长</th><th id="th-w1">基准宽</th><th id="th-w2">测试宽</th>
+                            <th style="width:35px">强度</th><th style="width:25px">删</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-section panel-vars">
+            <div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <label>射线颜色</label>
+                    <select id="v-rail-color" style="width:100%; margin-top:2px;" onchange="render()">
+                        <option value="0,0,0">黑色</option><option value="239,68,68">红色</option>
+                        <option value="37,99,235">蓝色</option><option value="16,185,129">绿色</option>
+                    </select>
+                </div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <label>线条颜色</label>
+                    <select id="v-line-color" style="width:100%; margin-top:2px;" onchange="render()">
+                        <option value="#ef4444">红色</option><option value="#2563eb">蓝色</option>
+                        <option value="#10b981">绿色</option><option value="#000000">黑色</option>
+                    </select>
+                </div>
+                <div class="input-item">
+                    <div style="display:flex; justify-content:space-between"><label>射线张角 (°)</label><button class="lock-btn" id="lock-v-angle" onclick="toggleLock('v-angle')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-angle-s" min="2" max="60" value="20"><input type="number" id="v-angle-n" class="val-box" value="20"></div>
+                </div>
+            </div>
+            <div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <div style="display:flex; justify-content:space-between"><label>射线数量 (N)</label><button class="lock-btn" id="lock-v-num" onclick="toggleLock('v-num')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-num-s" min="2" max="24" value="10"><input type="number" id="v-num-n" class="val-box" value="10"></div>
+                </div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <div style="display:flex; justify-content:space-between"><label>射线宽度 (px)</label><button class="lock-btn" id="lock-v-rail-w" onclick="toggleLock('v-rail-w')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-rail-w-s" min="0.5" max="10" step="0.5" value="2.5"><input type="number" id="v-rail-w-n" class="val-box" value="2.5"></div>
+                </div>
+                <div class="input-item">
+                    <div style="display:flex; justify-content:space-between"><label>射线深度 (Alpha)</label><button class="lock-btn" id="lock-v-alpha" onclick="toggleLock('v-alpha')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-alpha-s" min="0.1" max="1" step="0.05" value="0.6"><span id="v-alpha-v" style="font-size:10px; width:30px">60%</span></div>
+                </div>
+            </div>
+            <div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <div style="display:flex; justify-content:space-between"><label>基准长度 (px)</label><button class="lock-btn" id="lock-v-ref" onclick="toggleLock('v-ref')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-ref-s" min="20" max="320" value="100"><input type="number" id="v-ref-n" class="val-box" value="100"></div>
+                </div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <div style="display:flex; justify-content:space-between"><label>基准线宽 (px)</label><button class="lock-btn" id="lock-v-w-ref" onclick="toggleLock('v-w-ref')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-w-ref-s" min="2" max="30" value="12"><input type="number" id="v-w-ref-n" class="val-box" value="12"></div>
+                </div>
+                <div class="input-item">
+                    <div style="display:flex; justify-content:space-between"><label>基准线顶点距</label><button class="lock-btn" id="lock-v-offset" onclick="toggleLock('v-offset')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-offset-s" min="30" max="350" value="100"><input type="number" id="v-offset-n" class="val-box" value="100"></div>
+                </div>
+            </div>
+            <div>
+                <div class="input-item" style="margin-bottom:8px">
+                    <div style="display:flex; justify-content:space-between"><label>测试线宽 (px)</label><button class="lock-btn" id="lock-v-w-test" onclick="toggleLock('v-w-test')">锁定</button></div>
+                    <div class="input-row"><input type="range" id="v-w-test-s" min="2" max="30" value="12"><input type="number" id="v-w-test-n" class="val-box" value="12"></div>
+                </div>
+                <div class="input-item" style="margin-bottom:12px">
+                    <label>保存后自动步进 (°)</label>
+                    <div class="input-row"><input type="number" id="s-step" value="0" class="val-box" style="width:100%"></div>
+                </div>
+                <p style="font-size:9px; color:var(--gray); margin:0;">* 按Enter键快速保存<br>* 左右方向键调节匹配线</p>
+            </div>
+        </div>
+        <div class="panel-section panel-adjust">
+            <h3 style="margin-bottom:8px; font-size:0.8rem; border-left:4px solid var(--primary); padding-left:8px; margin-top:0;">被试匹配面板</h3>
+            <input type="range" id="l-slider" min="10" max="640" value="80" step="1" style="width:100%; height:14px; margin-bottom:10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--gray);">
+                <span>[←] 减小</span><span style="background:#eef2ff; padding:2px 6px; border-radius:4px;">匹配值已隐藏</span><span>[→] 增大</span>
+            </div>
+        </div>
+        <div class="panel-section panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">确认保存</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出报表</button>
+            <button class="btn btn-reset" onclick="clearTable()">重置</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-angle': false, 'v-num': false, 'v-rail-w': false, 'v-ref': false, 'v-w-ref': false, 'v-w-test': false, 'v-offset': false, 'v-alpha': false };
+        function bindSync(id) {
+            const s = document.getElementById(id + '-s'), n = document.getElementById(id + '-n');
+            if(!n) return s.oninput = render;
+            s.oninput = () => { n.value = s.value; render(); };
+            n.oninput = () => { s.value = n.value; render(); };
+        }
+        ['v-angle', 'v-num', 'v-rail-w', 'v-ref', 'v-w-ref', 'v-w-test', 'v-offset', 'v-alpha'].forEach(bindSync);
+        document.getElementById('l-slider').oninput = render;
+        function toggleLock(id) {
+            activeLocks[id] = !activeLocks[id];
+            const btn = document.getElementById('lock-' + id);
+            btn.classList.toggle('active');
+            btn.innerText = activeLocks[id] ? "🔒" : "锁定";
+            const s = document.getElementById(id + '-s'), n = document.getElementById(id + '-n');
+            if(s) s.disabled = activeLocks[id]; if(n) n.disabled = activeLocks[id];
+        }
+        function render() {
+            const angle = parseFloat(document.getElementById('v-angle-s').value);
+            const num = parseInt(document.getElementById('v-num-s').value);
+            const railW = parseFloat(document.getElementById('v-rail-w-s').value);
+            const offset = parseFloat(document.getElementById('v-offset-s').value);
+            const alpha = parseFloat(document.getElementById('v-alpha-s').value);
+            const refLen = parseFloat(document.getElementById('v-ref-s').value);
+            const testLen = parseFloat(document.getElementById('l-slider').value);
+            const wRef = parseFloat(document.getElementById('v-w-ref-s').value);
+            const wTest = parseFloat(document.getElementById('v-w-test-s').value);
+            const railRGB = document.getElementById('v-rail-color').value;
+            const lineColor = document.getElementById('v-line-color').value;
+            document.getElementById('v-alpha-v').innerText = Math.round(alpha*100) + "%";
+            const container = document.getElementById('rails-container');
+            container.innerHTML = '';
+            for(let i=0; i<num; i++){
+                const r = document.createElement('div');
+                r.className = 'rail';
+                r.style.width = railW + 'px';
+                r.style.left = '-' + (railW/2) + 'px';
+                r.style.backgroundColor = 'rgba(' + railRGB + ',' + alpha + ')';
+                const curA = (num === 1) ? 0 : (angle / 2) - (i * (angle / (num - 1)));
+                r.style.transform = 'rotate(' + curA + 'deg)';
+                container.appendChild(r);
+            }
+            const refLine = document.getElementById('line-ref');
+            refLine.style.width = refLen + 'px';
+            refLine.style.height = wRef + 'px';
+            refLine.style.left = 'calc(50% - ' + (refLen/2) + 'px)';
+            refLine.style.top = offset + 'px';
+            refLine.style.backgroundColor = lineColor;
+            const testLine = document.getElementById('line-test');
+            testLine.style.width = testLen + 'px';
+            testLine.style.height = wTest + 'px';
+            testLine.style.left = 'calc(50% - ' + (testLen/2) + 'px)';
+            testLine.style.backgroundColor = lineColor;
+            testLine.style.border = "none";
+        }
+        // --- 核心逻辑：记录、表格显示、删除、导出 ---
+
+        function doRecord() {
+            try {
+                // 1. 抓取所有物理变量
+                const data = {
+                    id: Date.now(),
+                    railColor: document.getElementById('v-rail-color').selectedOptions[0].text,
+                    lineColor: document.getElementById('v-line-color').selectedOptions[0].text,
+                    angle: document.getElementById('v-angle-s').value + "°",
+                    num: document.getElementById('v-num-s').value,
+                    railWidth: document.getElementById('v-rail-w-s').value + "px",
+                    offset: document.getElementById('v-offset-s').value + "px",
+                    alpha: Math.round(document.getElementById('v-alpha-s').value * 100) + "%",
+                    refLen: document.getElementById('v-ref-s').value + "px",
+                    testLen: document.getElementById('l-slider').value + "px",
+                    wRef: document.getElementById('v-w-ref-s').value + "px",
+                    wTest: document.getElementById('v-w-test-s').value + "px"
+                };
+
+                // 2. 计算错觉强度 (匹配长 vs 基准长)
+                const r = parseFloat(data.refLen), t = parseFloat(data.testLen);
+                data.strength = (((t - r) / r) * 100).toFixed(1) + "%";
+
+                results.push(data);
+                updateTable();
+
+                // 3. 自动步进逻辑 (锁定判断)
+                if (!activeLocks['v-angle']) {
+                    const stepEl = document.getElementById('s-step');
+                    const step = stepEl ? parseFloat(stepEl.value) : 0;
+                    if (step !== 0) {
+                        const s = document.getElementById('v-angle-s'), n = document.getElementById('v-angle-n');
+                        if (s && n) {
+                            s.value = parseFloat(s.value) + step;
+                            n.value = s.value;
+                        }
+                    }
+                }
+                
+                // 视觉反馈
+                const stage = document.getElementById('stage');
+                stage.style.borderColor = "#10b981";
+                setTimeout(() => stage.style.borderColor = "#1e293b", 200);
+
+                render(); 
+            } catch (e) {
+                console.error("庞诺保存失败:", e);
+            }
+        }
+
+        function updateTable() {
+            // 获取所有过滤开关状态
+            const fC1 = document.getElementById('f-c1').checked;
+            const fC2 = document.getElementById('f-c2').checked;
+            const fRW = document.getElementById('f-rw').checked;
+            const fW1 = document.getElementById('f-w1').checked;
+            const fW2 = document.getElementById('f-w2').checked;
+            const filters = [];
+            for (let i = 1; i <= 6; i++) { filters[i] = document.getElementById('f-' + i).checked; }
+
+            // 同步表头样式 (th-c1, th-1, etc.)
+            if(document.getElementById('th-c1')) document.getElementById('th-c1').className = fC1 ? '' : 'col-hidden';
+            if(document.getElementById('th-c2')) document.getElementById('th-c2').className = fC2 ? '' : 'col-hidden';
+            if(document.getElementById('th-rw')) document.getElementById('th-rw').className = fRW ? '' : 'col-hidden';
+            if(document.getElementById('th-w1')) document.getElementById('th-w1').className = fW1 ? '' : 'col-hidden';
+            if(document.getElementById('th-w2')) document.getElementById('th-w2').className = fW2 ? '' : 'col-hidden';
+            for (let i = 1; i <= 6; i++) {
+                const th = document.getElementById('th-' + i);
+                if (th) th.className = filters[i] ? '' : 'col-hidden';
+            }
+
+            const tbody = document.getElementById('log');
+            if(!tbody) return;
+            tbody.innerHTML = "";
+
+            results.forEach((r, i) => {
+                const row = '<tr>' +
+                    '<td>' + (i + 1) + '</td>' +
+                    '<td class="' + (fC1 ? '' : 'col-hidden') + '">' + r.railColor + '</td>' +
+                    '<td class="' + (fC2 ? '' : 'col-hidden') + '">' + r.lineColor + '</td>' +
+                    '<td class="' + (filters[1] ? '' : 'col-hidden') + '">' + r.angle + '</td>' +
+                    '<td class="' + (filters[2] ? '' : 'col-hidden') + '">' + r.num + '</td>' +
+                    '<td class="' + (fRW ? '' : 'col-hidden') + '">' + r.railWidth + '</td>' +
+                    '<td class="' + (filters[3] ? '' : 'col-hidden') + '">' + r.offset + '</td>' +
+                    '<td class="' + (filters[4] ? '' : 'col-hidden') + '">' + r.alpha + '</td>' +
+                    '<td class="' + (filters[5] ? '' : 'col-hidden') + '">' + r.refLen + '</td>' +
+                    '<td class="' + (filters[6] ? '' : 'col-hidden') + '"><b>' + r.testLen + '</b></td>' +
+                    '<td class="' + (fW1 ? '' : 'col-hidden') + '">' + r.wRef + '</td>' +
+                    '<td class="' + (fW2 ? '' : 'col-hidden') + '">' + r.wTest + '</td>' +
+                    '<td style="color:var(--primary); font-weight:bold">' + r.strength + '</td>' +
+                    '<td><button onclick="deleteRow(' + r.id + ')" style="border:none; background:none; color:var(--danger); cursor:pointer">×</button></td>' +
+                    '</tr>';
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+        }
+
+        function deleteRow(id) { results = results.filter(r => r.id !== id); updateTable(); }
+
+        function clearTable() { if (confirm("确定清空全部庞诺实验数据？")) { results = []; updateTable(); } }
+
+        function doExport() {
+            if (results.length === 0) return alert("暂无实验数据");
+            
+            // 导出为规范的中文字段
+            const exportData = results.map((r, i) => ({
+                "序号": i + 1,
+                "射线颜色": r.railColor,
+                "线条颜色": r.lineColor,
+                "射线张角": r.angle,
+                "射线数量": r.num,
+                "射线宽度": r.railWidth,
+                "基准线顶点距": r.offset,
+                "射线透明度": r.alpha,
+                "基准线长度": r.refLen,
+                "匹配调节长度": r.testLen,
+                "基准线宽度": r.wRef,
+                "测试线宽度": r.wTest,
+                "错觉强度": r.strength
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Ponzo_Results");
+            XLSX.writeFile(wb, "Ponzo_Exp_Data_" + Date.now() + ".xlsx");
+        }
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 1; render(); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 1; render(); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = render;
+    <\/script>
+</body>
+</html>`;
+
+// 核心修复：通过 URL 编码转换，避开所有 JS 冲突字符
+STORAGE['ponzo'] = decodeURIComponent(escape(window.atob(window.btoa(unescape(encodeURIComponent(ponzo_raw))))));
+
+
+// --- 模块 3: 艾宾浩斯视错觉 ---
+const ebbinghaus_raw = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1000px; --stage-h: 600px; --primary: #4f46e5; --success: #10b981; --danger: #ef4444; --gray: #94a3b8; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 15px; margin: 0; }
+        .top-container { display: flex; gap: 15px; width: 1450px; height: var(--stage-h); margin-bottom: 20px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: #ffffff; border: 2px solid #1e293b; border-radius: 12px; display: flex; justify-content: space-around; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; transition: border 0.3s; }
+        .data-panel { flex: 1; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; display: flex; flex-direction: column; min-width: 0; }
+        .bottom-container { display: flex; gap: 15px; width: 1450px; align-items: stretch; }
+        .panel-vars { flex: 1.5; background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-adjust { flex: 2.2; background: #fdfdfd; padding: 18px; border-radius: 12px; border: 1px solid #c7d2fe; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.6; background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+        .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 15px; }
+        .input-header { display: flex; justify-content: space-between; align-items: center; }
+        .lock-btn { cursor: pointer; border: 1px solid #ddd; background: #fff; padding: 0px 4px; border-radius: 4px; font-size: 9px; color: var(--gray); }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .input-group { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .input-group input[type="range"] { flex: 1; height: 4px; }
+        .input-group input[type="number"] { width: 55px; padding: 3px; border: 1px solid #cbd5e1; border-radius: 4px; text-align: center; font-size: 0.8rem; }
+        label { font-weight: 600; font-size: 0.75rem; color: #475569; display: block; }
+        h3 { margin: 0 0 10px 0; color: #1e293b; border-left: 4px solid var(--primary); padding-left: 10px; font-size: 0.85rem; }
+        .stimulus-group { position: relative; width: 480px; height: 480px; }
+        .obj { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); transition: width 0.05s, height 0.05s; }
+        .center-obj { z-index: 10; }
+        .surround-obj { background: #94a3b8; opacity: 0.7; }
+        .shape-circle { border-radius: 50%; }
+        .shape-hexagon { clip-path: polygon(25% 6.7%, 75% 6.7%, 100% 50%, 75% 93.3%, 25% 93.3%, 0% 50%); }
+        .shape-dodecagon { clip-path: polygon(50% 0%, 75% 6.7%, 93.3% 25%, 100% 50%, 93.3% 75%, 75% 93.3%, 50% 100%, 25% 93.3%, 6.7% 75%, 0% 50%, 6.7% 25%, 25% 6.7%); }
+        .large-slider { width: 100%; height: 12px; cursor: pointer; accent-color: var(--primary); margin: 20px 0; }
+        .btn { padding: 8px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; font-size: 0.75rem; transition: 0.2s; }
+        .btn-save { background: var(--primary); height: 50px; font-size: 0.85rem; }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: white; color: var(--danger); border: 1px solid var(--danger); }
+        .btn-del { background: none; color: #94a3b8; font-size: 14px; padding: 2px 6px; border-radius: 4px; border:none; cursor:pointer;}
+        .filter-zone { background: #f8fafc; padding: 6px; border-radius: 6px; margin-bottom: 8px; font-size: 9px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; border: 1px dashed #cbd5e1; }
+        .table-wrapper { flex: 1; overflow-y: auto; border: 1px solid #f1f5f9; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+        th, td { padding: 6px 2px; text-align: center; border-bottom: 1px solid #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #f8fafc; position: sticky; top: 0; z-index: 20; }
+        .col-hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 5px 0 15px 0;">艾宾浩斯视错觉（Ebbinghaus Illusion）科研终端</h2>
+    <div class="top-container">
+        <div id="stage">
+            <div class="stimulus-group" id="group-left"><div id="obj-ref" class="obj center-obj shape-circle"></div></div>
+            <div class="stimulus-group" id="group-right"><div id="obj-test" class="obj center-obj shape-circle"></div></div>
+        </div>
+        <div class="data-panel">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <h3>实验结果序列</h3>
+                <span style="font-size:10px; color:#94a3b8;">共 <b id="counter" style="color:var(--primary)">0</b> 组有效数据</span>
+            </div>
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-0" checked onchange="updateTable()"> 颜色</label>
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 形状</label>
+                <label><input type="checkbox" id="f-2" checked onchange="updateTable()"> 数量</label>
+                <label><input type="checkbox" id="f-3" checked onchange="updateTable()"> 间距</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 左扰</label>
+                <label><input type="checkbox" id="f-5" checked onchange="updateTable()"> 右扰</label>
+                <label><input type="checkbox" id="f-6" checked onchange="updateTable()"> 基准/结果</label>
+            </div>
+            <div class="table-wrapper">
+                <table id="main-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 25px;">序</th>
+                            <th id="th-0" style="width: 35px;">颜色</th>
+                            <th id="th-1" style="width: 45px;">形状</th>
+                            <th id="th-2" style="width: 25px;">数</th>
+                            <th id="th-3" style="width: 35px;">距</th>
+                            <th id="th-4" style="width: 40px;">左扰</th>
+                            <th id="th-5" style="width: 40px;">右扰</th>
+                            <th id="th-6-1" style="width: 40px;">基准</th>
+                            <th id="th-6-2" style="width: 45px;">结果</th>
+                            <th style="width: 45px;">强度</th>
+                            <th style="width: 30px;">删</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-vars">
+            <h3>自变量配置</h3>
+            <div class="control-grid">
+                <div class="item">
+                    <label>物体颜色</label>
+                    <select id="v-color" style="width:100%; padding:2px;" onchange="render()">
+                        <option value="#ef4444">红色</option><option value="#3b82f6">蓝色</option>
+                        <option value="#22c55e">绿色</option><option value="#000000">黑色</option>
+                    </select>
+                </div>
+                <div class="item">
+                    <label>形状</label>
+                    <select id="v-shape" style="width:100%; padding:2px;" onchange="render()">
+                        <option value="shape-circle">圆形</option><option value="shape-hexagon">正六边形</option>
+                        <option value="shape-dodecagon">正十二边形</option>
+                    </select>
+                </div>
+                <div class="item">
+                    <div class="input-header"><label>数量 (3-9)</label><button class="lock-btn" id="lock-v-count" onclick="toggleLock('v-count')">锁定</button></div>
+                    <div class="input-group"><input type="range" id="v-count-s" min="3" max="9" value="6"><input type="number" id="v-count-n" value="6"></div>
+                </div>
+                <div class="item">
+                    <div class="input-header"><label>基准 (px)</label><button class="lock-btn" id="lock-v-ref" onclick="toggleLock('v-ref')">锁定</button></div>
+                    <div class="input-group"><input type="range" id="v-ref-d-s" min="40" max="120" value="60"><input type="number" id="v-ref-d-n" value="60"></div>
+                </div>
+                <div class="item">
+                    <div class="input-header"><label>左干扰 (px)</label><button class="lock-btn" id="lock-v-sur-l" onclick="toggleLock('v-sur-l')">锁定</button></div>
+                    <div class="input-group"><input type="range" id="s-surround-l-s" min="20" max="160" value="100"><input type="number" id="s-surround-l-n" value="100"></div>
+                </div>
+                <div class="item">
+                    <div class="input-header"><label>右干扰 (px)</label><button class="lock-btn" id="lock-v-sur-r" onclick="toggleLock('v-sur-r')">锁定</button></div>
+                    <div class="input-group"><input type="range" id="s-surround-r-s" min="20" max="160" value="30"><input type="number" id="s-surround-r-n" value="30"></div>
+                </div>
+                <div class="item">
+                    <div class="input-header"><label>间距 (2-50px)</label><button class="lock-btn" id="lock-v-dist" onclick="toggleLock('v-dist')">锁定</button></div>
+                    <div class="input-group"><input type="range" id="v-dist-s" min="2" max="50" value="20"><input type="number" id="v-dist-n" value="20"></div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-adjust">
+            <h3>被试匹配调节面板</h3>
+            <div style="padding: 0 10px;">
+                <label style="color:#4f46e5; font-size:0.8rem; text-align:center; margin-bottom:8px;">请调节右侧物体至视觉等大</label>
+                <input type="range" id="l-slider" min="20" max="250" value="60" step="1" class="large-slider">
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: #94a3b8;">
+                    <span>更小 [-]</span><span id="l-val-hint">数值已隐藏</span><span>更大 [+]</span>
+                </div>
+            </div>
+        </div>
+        <div class="panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">确认保存 (Enter)</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出 XLSX 报表</button>
+            <button class="btn btn-reset" onclick="clearAll()">重置表格</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-count': false, 'v-ref': false, 'v-sur-l': false, 'v-sur-r': false, 'v-dist': false };
+        function bindSync(rangeId, numberId) {
+            const range = document.getElementById(rangeId), number = document.getElementById(numberId);
+            range.oninput = () => { number.value = range.value; render(); };
+            number.oninput = () => { 
+                let val = parseInt(number.value);
+                if(val < number.min) val = number.min; if(val > number.max) val = number.max;
+                range.value = val; render(); 
+            };
+        }
+        function toggleLock(id) {
+            activeLocks[id] = !activeLocks[id];
+            const btn = document.getElementById('lock-' + id);
+            btn.classList.toggle('active');
+            btn.innerText = activeLocks[id] ? "🔒" : "锁定";
+            let p = (id==='v-count'?'v-count':(id==='v-ref'?'v-ref-d':(id==='v-sur-l'?'s-surround-l':(id==='v-sur-r'?'s-surround-r':'v-dist'))));
+            document.getElementById(p + '-s').disabled = activeLocks[id];
+            document.getElementById(p + '-n').disabled = activeLocks[id];
+        }
+        bindSync('v-count-s', 'v-count-n'); bindSync('v-ref-d-s', 'v-ref-d-n');
+        bindSync('s-surround-l-s', 's-surround-l-n'); bindSync('s-surround-r-s', 's-surround-r-n');
+        bindSync('v-dist-s', 'v-dist-n');
+        document.getElementById('v-shape').onchange = render;
+        document.getElementById('l-slider').oninput = render;
+        function render() {
+            const shape = document.getElementById('v-shape').value, color = document.getElementById('v-color').value;
+            const count = parseInt(document.getElementById('v-count-n').value) || 6;
+            const refD = parseFloat(document.getElementById('v-ref-d-n').value);
+            const dist = parseFloat(document.getElementById('v-dist-n').value);
+            const surL = parseFloat(document.getElementById('s-surround-l-n').value);
+            const surR = parseFloat(document.getElementById('s-surround-r-n').value);
+            const testD = parseFloat(document.getElementById('l-slider').value);
+            drawGroup('group-left', 'obj-ref', refD, surL, count, dist, shape, color);
+            drawGroup('group-right', 'obj-test', testD, surR, count, dist, shape, color);
+        }
+        function drawGroup(cid, mid, mD, sD, count, dist, sCls, color) {
+            const container = document.getElementById(cid);
+            container.querySelectorAll('.surround-obj').forEach(el => el.remove());
+            const center = document.getElementById(mid);
+            center.className = 'obj center-obj ' + sCls; center.style.width = mD + 'px'; center.style.height = mD + 'px'; center.style.backgroundColor = color;
+            const radius = (mD / 2) + (sD / 2) + dist;
+            for (let i = 0; i < count; i++) {
+                const angle = (i / count) * Math.PI * 2 - Math.PI/2;
+                const x = Math.cos(angle) * radius, y = Math.sin(angle) * radius;
+                const dot = document.createElement('div');
+                dot.className = 'obj surround-obj ' + sCls;
+                dot.style.width = sD + 'px'; dot.style.height = sD + 'px';
+                dot.style.left = 'calc(50% + ' + x + 'px)'; dot.style.top = 'calc(50% + ' + y + 'px)';
+                container.appendChild(dot);
+            }
+        }
+        // 1. 记录函数：精准抓取所有物理变量
+        function doRecord() {
+            try {
+                const refD = parseFloat(document.getElementById('v-ref-d-n').value);
+                const testD = parseFloat(document.getElementById('l-slider').value);
+                // 计算错觉强度 (结果比基准大多少)
+                const sv = (((testD - refD) / refD) * 100).toFixed(1);
+                
+                results.push({
+                    id: Date.now(),
+                    color: document.getElementById('v-color').selectedOptions[0].text,
+                    shape: document.getElementById('v-shape').selectedOptions[0].text,
+                    count: document.getElementById('v-count-n').value,
+                    dist: document.getElementById('v-dist-n').value + "px",
+                    surL: document.getElementById('s-surround-l-n').value + "px",
+                    surR: document.getElementById('s-surround-r-n').value + "px",
+                    refD: refD + "px", 
+                    testD: testD + "px",
+                    strength: (sv > 0 ? "+" : "") + sv + "%"
+                });
+
+                updateTable();
+                
+                // 视觉反馈：边框闪烁绿色表示保存成功
+                const stage = document.getElementById('stage');
+                stage.style.borderColor = "#10b981";
+                setTimeout(() => stage.style.borderColor = "#1e293b", 200);
+                
+                // 自动步进（如果需要，可在此添加针对干扰圆大小的逻辑）
+                
+                // 提示：通常不需要重置滑块，方便被试在上一轮基础上微调
+                render(); 
+            } catch (e) {
+                console.error("记录失败:", e);
+            }
+        }
+
+        // 2. 表格更新：包含你的 Checkbox 过滤逻辑
+        function updateTable() {
+            const filters = []; 
+            for(let i=0; i<=6; i++) { 
+                const el = document.getElementById('f-'+i);
+                filters[i] = el ? el.checked : true; 
+            }
+
+            // 同步表头显示隐藏
+            const thMap = ['0','1','2','3','4','5','6-1','6-2'];
+            thMap.forEach(k => {
+                const th = document.getElementById('th-'+k);
+                if(th) {
+                    let filterIdx = k.includes('-') ? parseInt(k.split('-')[0]) : parseInt(k);
+                    th.className = filters[filterIdx] ? '' : 'col-hidden';
+                }
+            });
+
+            const tbody = document.getElementById('log'); 
+            if(!tbody) return;
+            tbody.innerHTML = "";
+
+            results.forEach((r, idx) => {
+                const row = '<tr><td>'+(idx+1)+'</td>' +
+                    '<td class="'+(filters[0]?'':'col-hidden')+'">'+r.color+'</td>' +
+                    '<td class="'+(filters[1]?'':'col-hidden')+'">'+r.shape+'</td>' +
+                    '<td class="'+(filters[2]?'':'col-hidden')+'">'+r.count+'</td>' +
+                    '<td class="'+(filters[3]?'':'col-hidden')+'">'+r.dist+'</td>' +
+                    '<td class="'+(filters[4]?'':'col-hidden')+'">'+r.surL+'</td>' +
+                    '<td class="'+(filters[5]?'':'col-hidden')+'">'+r.surR+'</td>' +
+                    '<td class="'+(filters[6]?'':'col-hidden')+'">'+r.refD+'</td>' +
+                    '<td class="'+(filters[6]?'':'col-hidden')+'"><b>'+r.testD+'</b></td>' +
+                    '<td style="color:'+(parseFloat(r.strength)>=0?'#ef4444':'#3b82f6')+';font-weight:bold">'+r.strength+'</td>' +
+                    '<td><button class="btn-del" onclick="deleteRow('+r.id+')">×</button></td></tr>';
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+            
+            const counter = document.getElementById('counter');
+            if(counter) counter.innerText = results.length;
+        }
+
+        // 3. 导出函数：严格 10 项数据
+        function doExport() {
+            if (results.length === 0) return alert("没有可导出的数据");
+            
+            const exportData = results.map((r, i) => ({
+                "序次": i + 1,
+                "颜色": r.color,
+                "形状": r.shape,
+                "干扰圆数量": r.count,
+                "间距": r.dist,
+                "左侧干扰大小": r.surL,
+                "右侧干扰大小": r.surR,
+                "中心基准直径": r.refD,
+                "调节结果直径": r.testD,
+                "错觉强度": r.strength
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "艾宾浩斯实验数据");
+            XLSX.writeFile(wb, "Ebbinghaus_Research_" + Date.now() + ".xlsx");
+        }
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 1; render(); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 1; render(); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = render;
+    <\/script>
+</body>
+</html>`;
+
+STORAGE['ebbinghaus'] = decodeURIComponent(escape(window.atob(window.btoa(unescape(encodeURIComponent(ebbinghaus_raw))))));
+
+
+// --- 模块 4: 黑林错觉 ---
+const hering_raw = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1000px; --stage-h: 600px; --primary: #6366f1; --success: #10b981; --danger: #ef4444; --gray: #64748b; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8fafc; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; }
+        .top-container { display: flex; gap: 15px; width: 1480px; height: var(--stage-h); margin-bottom: 15px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: white; border: 2px solid #1e293b; border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); }
+        canvas { position: absolute; top: 0; left: 0; }
+        .data-panel { flex: 1; background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+        .filter-zone { background: #f1f5f9; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 11px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; border: 1px solid #e2e8f0; }
+        .table-wrapper { flex: 1; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+        th, td { padding: 6px 1px; text-align: center; border-bottom: 1px solid #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #f1f5f9; position: sticky; top: 0; z-index: 5; }
+        .col-hidden { display: none !important; }
+        .bottom-container { display: flex; gap: 12px; width: 1480px; align-items: stretch; }
+        .panel-section { background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-vars { flex: 3; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .panel-adjust { flex: 1.2; background: #f5f3ff; border: 1px solid #ddd6fe; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.6; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+        label { font-size: 13px; font-weight: 600; color: #1e293b; display: block; margin-bottom: 4px; }
+        .val-box { width: 45px; text-align: center; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 12px; width: 100%; }
+        .input-row { display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { flex: 1; accent-color: var(--primary); cursor: pointer; }
+        .btn { padding: 12px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; color: white; }
+        .btn-save { background: var(--primary); height: 60px; font-size: 15px; }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+        .lock-btn { cursor: pointer; border: 1px solid #cbd5e1; background: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; transition: 0.2s; }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .adjust-title { margin-bottom: 10px; font-size: 0.95rem; border-left: 5px solid var(--primary); padding-left: 10px; color: #1e293b; }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 10px 0; font-weight: 800;">黑林错觉（Hering Illusion）科研终端</h2>
+    <div class="top-container">
+        <div id="stage">
+            <canvas id="canvasBg"></canvas>
+            <canvas id="canvasTest"></canvas>
+        </div>
+        <div class="data-panel">
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 放射线数</label>
+                <label><input type="checkbox" id="f-2" checked onchange="updateTable()"> 线间距</label>
+                <label><input type="checkbox" id="f-bgc" checked onchange="updateTable()"> 背景颜色</label>
+                <label><input type="checkbox" id="f-tc" checked onchange="updateTable()"> 目标颜色</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 匹配度</label>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:25px">序</th>
+                            <th id="th-1">放射线</th><th id="th-2">间距</th>
+                            <th id="th-bgc">背景色</th><th id="th-tc">目标色</th>
+                            <th id="th-4">匹配弯曲度</th><th style="width:25px">删</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-section panel-vars">
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label>放射线条数</label>
+                    <button class="lock-btn" id="lock-v-lines" onclick="toggleLock('v-lines')">锁定</button>
+                </div>
+                <div class="input-row">
+                    <input type="range" id="v-lines-s" min="10" max="100" value="36">
+                    <input type="number" id="v-lines-n" class="val-box" value="36">
+                </div>
+                <div style="margin-top:15px">
+                    <label>背景线条颜色</label>
+                    <select id="v-color-bg" onchange="draw()">
+                        <option value="#cbd5e1">浅灰色</option><option value="#94a3b8">深灰色</option>
+                        <option value="#1e293b">黑色</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <label>目标线间距 (Gap)</label>
+                    <button class="lock-btn" id="lock-v-gap" onclick="toggleLock('v-gap')">锁定</button>
+                </div>
+                <div class="input-row">
+                    <input type="range" id="v-gap-s" min="50" max="300" value="120">
+                    <input type="number" id="v-gap-n" class="val-box" value="120">
+                </div>
+                <div style="margin-top:15px">
+                    <label>目标线颜色</label>
+                    <select id="v-color-test" onchange="draw()">
+                        <option value="#ef4444">红色</option><option value="#2563eb">蓝色</option>
+                        <option value="#10b981">绿色</option><option value="#000000">黑色</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label>保存后自动步进 (间距)</label>
+                <input type="number" id="s-step" value="0" class="val-box" style="width:100%; height:28px">
+                <div style="margin-top:15px">
+                    <label>目标线粗细 (px)</label>
+                    <input type="number" id="v-width" value="3" class="val-box" style="width:100%; height:28px" oninput="draw()">
+                </div>
+            </div>
+        </div>
+        <div class="panel-section panel-adjust">
+            <h3 class="adjust-title">被试匹配面板</h3>
+            <input type="range" id="l-slider" min="-40" max="40" value="0" step="0.5" style="width:100%; height:25px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--gray); font-weight: 500;">
+                <span>[←] 向内弯曲</span><span style="background:#eef2ff; padding:2px 8px; border-radius:4px; color:var(--primary)">调整至视觉平行</span><span>[→] 向外弯曲</span>
+            </div>
+        </div>
+        <div class="panel-section panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">确认保存 (Enter)</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出结果</button>
+            <button class="btn btn-reset" onclick="clearTable()">重置</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-lines': false, 'v-gap': false };
+        let cvsBg, cvsTest, ctxBg, ctxTest;
+        function initCanvas() {
+            cvsBg = document.getElementById('canvasBg'); cvsTest = document.getElementById('canvasTest');
+            ctxBg = cvsBg.getContext('2d'); ctxTest = cvsTest.getContext('2d');
+            [cvsBg, cvsTest].forEach(c => { c.width = 1000; c.height = 600; });
+            draw();
+        }
+        function bindSync(id) {
+            const s = document.getElementById(id + '-s'), n = document.getElementById(id + '-n');
+            s.oninput = () => { n.value = s.value; draw(); };
+            n.oninput = () => { s.value = n.value; draw(); };
+        }
+        function toggleLock(id) {
+            activeLocks[id] = !activeLocks[id];
+            document.getElementById('lock-' + id).classList.toggle('active');
+            document.getElementById(id + '-s').disabled = activeLocks[id];
+            document.getElementById(id + '-n').disabled = activeLocks[id];
+        }
+        function draw() {
+            if(!ctxBg) return;
+            const lines = parseInt(document.getElementById('v-lines-n').value);
+            const gap = parseInt(document.getElementById('v-gap-n').value);
+            const colorBg = document.getElementById('v-color-bg').value;
+            const colorTest = document.getElementById('v-color-test').value;
+            const width = parseInt(document.getElementById('v-width').value);
+            const curve = parseFloat(document.getElementById('l-slider').value);
+            ctxBg.clearRect(0, 0, 1000, 600);
+            ctxBg.strokeStyle = colorBg; ctxBg.lineWidth = 1; ctxBg.beginPath();
+            const cX = 500, cY = 300;
+            for (let i = 0; i < lines; i++) {
+                const angle = (i * Math.PI * 2) / lines;
+                ctxBg.moveTo(cX, cY); ctxBg.lineTo(cX + Math.cos(angle) * 800, cY + Math.sin(angle) * 800);
+            }
+            ctxBg.stroke();
+            ctxTest.clearRect(0, 0, 1000, 600);
+            ctxTest.strokeStyle = colorTest; ctxTest.lineWidth = width; ctxTest.lineCap = 'round';
+            [cX - gap/2, cX + gap/2].forEach(x => {
+                ctxTest.beginPath(); ctxTest.moveTo(x, 0);
+                ctxTest.quadraticCurveTo(x + (x < cX ? -curve : curve), 300, x, 600);
+                ctxTest.stroke();
+            });
+        }
+        // --- 核心逻辑：记录、显示、删除、清空、导出 ---
+
+        function doRecord() {
+            try {
+                // 严格引用你 HTML 中的 ID：v-lines-n, v-gap-n, v-color-bg, v-color-test, l-slider
+                const data = { 
+                    id: Date.now(), 
+                    lines: document.getElementById('v-lines-n').value, 
+                    gap: document.getElementById('v-gap-n').value + "px", 
+                    bgColor: document.getElementById('v-color-bg').selectedOptions[0].text, 
+                    testColor: document.getElementById('v-color-test').selectedOptions[0].text, 
+                    curveResult: document.getElementById('l-slider').value 
+                };
+                results.push(data); 
+                updateTable();
+
+                // 自动步进逻辑
+                if(!activeLocks['v-gap']) {
+                    const stepEl = document.getElementById('s-step');
+                    const step = stepEl ? parseFloat(stepEl.value) : 0;
+                    if(step !== 0) {
+                        const s = document.getElementById('v-gap-s'), n = document.getElementById('v-gap-n');
+                        if(s && n) {
+                            s.value = parseFloat(s.value) + step; 
+                            n.value = s.value;
+                        }
+                    }
+                }
+                document.getElementById('l-slider').value = 0; 
+                if (typeof draw === 'function') draw();
+            } catch(e) { 
+                console.error("保存失败，请检查 ID 是否匹配:", e); 
+            }
+        }
+
+        function updateTable() {
+            try {
+                // 获取你 HTML 顶部的 Checkbox 过滤状态
+                const f1 = document.getElementById('f-1').checked;
+                const f2 = document.getElementById('f-2').checked;
+                const fbgc = document.getElementById('f-bgc').checked;
+                const ftc = document.getElementById('f-tc').checked;
+                const f4 = document.getElementById('f-4').checked;
+                
+                // 同步表头 (th-1, th-2...) 的显示隐藏
+                if(document.getElementById('th-1')) document.getElementById('th-1').className = f1 ? '' : 'col-hidden';
+                if(document.getElementById('th-2')) document.getElementById('th-2').className = f2 ? '' : 'col-hidden';
+                if(document.getElementById('th-bgc')) document.getElementById('th-bgc').className = fbgc ? '' : 'col-hidden';
+                if(document.getElementById('th-tc')) document.getElementById('th-tc').className = ftc ? '' : 'col-hidden';
+                if(document.getElementById('th-4')) document.getElementById('th-4').className = f4 ? '' : 'col-hidden';
+                
+                const tbody = document.getElementById('log'); 
+                if(!tbody) return;
+                tbody.innerHTML = "";
+                
+                results.forEach((r, i) => {
+                    const row = '<tr>' +
+                        '<td>' + (i + 1) + '</td>' +
+                        '<td class="' + (f1 ? '' : 'col-hidden') + '">' + r.lines + '</td>' +
+                        '<td class="' + (f2 ? '' : 'col-hidden') + '">' + r.gap + '</td>' +
+                        '<td class="' + (fbgc ? '' : 'col-hidden') + '">' + r.bgColor + '</td>' +
+                        '<td class="' + (ftc ? '' : 'col-hidden') + '">' + r.testColor + '</td>' +
+                        '<td class="' + (f4 ? '' : 'col-hidden') + '"><b>' + r.curveResult + '</b></td>' +
+                        '<td><button onclick="deleteRow(' + r.id + ')" style="border:none; background:none; color:#ef4444; cursor:pointer">×</button></td>' +
+                        '</tr>';
+                    tbody.insertAdjacentHTML('afterbegin', row);
+                });
+            } catch(e) {
+                console.error("表格渲染出错:", e);
+            }
+        }
+
+        // --- 中间那两个关键控制函数 ---
+        function deleteRow(id) { 
+            results = results.filter(function(r) { return r.id !== id; }); 
+            updateTable(); 
+        }
+
+        function clearTable() { 
+            if(confirm("确定清空全部数据？")) { 
+                results = []; 
+                updateTable(); 
+            } 
+        }
+
+        function doExport() {
+            if(results.length === 0) return alert("暂无实验数据");
+            const exportData = results.map((r, i) => ({
+                "序号": i + 1,
+                "放射线条数": r.lines,
+                "目标线间距": r.gap,
+                "背景颜色": r.bgColor,
+                "目标线颜色": r.testColor,
+                "匹配弯曲度": r.curveResult,
+                "绝对误差": Math.abs(parseFloat(r.curveResult))
+            }));
+            const ws = XLSX.utils.json_to_sheet(exportData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Hering_Results");
+            XLSX.writeFile(wb, "Hering_Exp_" + Date.now() + ".xlsx");
+        }
+        ['v-lines', 'v-gap'].forEach(bindSync);
+        document.getElementById('l-slider').oninput = draw;
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 0.5; draw(); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 0.5; draw(); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = initCanvas;
+    <\/script>
+</body>
+</html>`;
+
+STORAGE['hering'] = decodeURIComponent(escape(window.atob(window.btoa(unescape(encodeURIComponent(hering_raw))))));
+
+
+// --- 模块 5: 策尔纳错觉 ---
+const zollner_raw = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1000px; --stage-h: 600px; --primary: #2563eb; --success: #10b981; --danger: #ef4444; --gray: #64748b; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; }
+        .top-container { display: flex; gap: 15px; width: 1480px; height: var(--stage-h); margin-bottom: 15px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: white; border: 2px solid #1e293b; border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.1); display: flex; justify-content: center; align-items: center; }
+        .long-line { position: absolute; width: 4px; height: 120%; display: flex; flex-direction: column; align-items: center; justify-content: space-around; }
+        .short-line { position: absolute; pointer-events: none; }
+        .data-panel { flex: 1; background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; min-width: 0; }
+        .filter-zone { background: #f8fafc; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 11px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; border: 1px solid #e2e8f0; }
+        .table-wrapper { flex: 1; overflow-y: auto; border: 1px solid #f1f5f9; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+        th, td { padding: 6px 1px; text-align: center; border-bottom: 1px solid #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        th { background: #f1f5f9; position: sticky; top: 0; z-index: 5; }
+        .col-hidden { display: none !important; }
+        .bottom-container { display: flex; gap: 12px; width: 1480px; align-items: stretch; }
+        .panel-section { background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        .panel-vars { flex: 3.5; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px 25px; }
+        .panel-adjust { flex: 1; background: #f8faff; border: 1px solid #c7d2fe; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.6; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+        label { font-size: 13px; font-weight: 600; color: #1e293b; display: block; margin-bottom: 4px; }
+        .val-box { width: 45px; text-align: center; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 2px 0; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 12px; width: 100%; color: #334155; }
+        .lock-btn { cursor: pointer; border: 1px solid #cbd5e1; background: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; transition: 0.2s; }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .input-row { display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { flex: 1; accent-color: var(--primary); height: 6px; cursor: pointer; }
+        .btn { padding: 12px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; color: white; font-size: 14px; }
+        .btn-save { background: var(--primary); height: 60px; }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: white; color: var(--danger); border: 1px solid var(--danger); }
+        .adjust-title { margin-bottom: 10px; font-size: 0.95rem; border-left: 5px solid var(--primary); padding-left: 10px; color: #1e293b; }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 10px 0; font-weight: 800;">策尔纳错觉（Zöllner Illusion）科研终端</h2>
+    <div class="top-container">
+        <div id="stage"></div>
+        <div class="data-panel">
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-c" checked onchange="updateTable()"> 颜色</label>
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 交叉角</label>
+                <label><input type="checkbox" id="f-2" checked onchange="updateTable()"> 模式</label>
+                <label><input type="checkbox" id="f-3" checked onchange="updateTable()"> 间距</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 轴距</label>
+                <label><input type="checkbox" id="f-sl" checked onchange="updateTable()"> 短线长</label>
+                <label><input type="checkbox" id="f-sw" checked onchange="updateTable()"> 短线宽</label>
+                <label><input type="checkbox" id="f-5" checked onchange="updateTable()"> 匹配角</label>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:25px">序</th>
+                            <th id="th-c">颜色</th><th id="th-1">交叉角</th><th id="th-2">模式</th><th id="th-3">间距</th>
+                            <th id="th-4">轴距</th><th id="th-sl">短线长</th><th id="th-sw">短线宽</th><th id="th-5">匹配角</th><th style="width:25px">删</th>
+                        </tr>
+                    </thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-section panel-vars">
+            <div>
+                <div style="margin-bottom:12px"><label>线条颜色</label><select id="v-color" onchange="render()"><option value="#000000">黑色</option><option value="#ef4444">红色</option><option value="#10b981">绿色</option><option value="#2563eb">蓝色</option></select></div>
+                <div><label>短斜线模式</label><select id="v-mode" onchange="render()"><option value="alternate">交替 (标准)</option><option value="parallel">全平行</option></select></div>
+            </div>
+            <div>
+                <div style="margin-bottom:12px"><div style="display:flex; justify-content:space-between; align-items:center;"><label>交叉线角度 (°)</label><button class="lock-btn" id="lock-v-cross-angle" onclick="toggleLock('v-cross-angle')">锁定</button></div><div class="input-row"><input type="range" id="v-cross-angle-s" min="10" max="80" value="45"><input type="number" id="v-cross-angle-n" class="val-box" value="45"></div></div>
+                <div><div style="display:flex; justify-content:space-between; align-items:center;"><label>短线分布间距 (px)</label><button class="lock-btn" id="lock-v-spacing" onclick="toggleLock('v-spacing')">锁定</button></div><div class="input-row"><input type="range" id="v-spacing-s" min="15" max="100" value="40"><input type="number" id="v-spacing-n" class="val-box" value="40"></div></div>
+            </div>
+            <div>
+                <div style="margin-bottom:12px"><div style="display:flex; justify-content:space-between; align-items:center;"><label>短线长度 (px)</label><button class="lock-btn" id="lock-v-short-l" onclick="toggleLock('v-short-l')">锁定</button></div><div class="input-row"><input type="range" id="v-short-l-s" min="10" max="100" value="40"><input type="number" id="v-short-l-n" class="val-box" value="40"></div></div>
+                <div><div style="display:flex; justify-content:space-between; align-items:center;"><label>短线粗细 (px)</label><button class="lock-btn" id="lock-v-short-w" onclick="toggleLock('v-short-w')">锁定</button></div><div class="input-row"><input type="range" id="v-short-w-s" min="1" max="8" value="2"><input type="number" id="v-short-w-n" class="val-box" value="2"></div></div>
+            </div>
+            <div>
+                <div style="margin-bottom:12px"><div style="display:flex; justify-content:space-between; align-items:center;"><label>长线轴距 (Gap)</label><button class="lock-btn" id="lock-v-gap" onclick="toggleLock('v-gap')">锁定</button></div><div class="input-row"><input type="range" id="v-gap-s" min="100" max="300" value="160"><input type="number" id="v-gap-n" class="val-box" value="160"></div></div>
+                <div><label>保存后自动步进 (°)</label><input type="number" id="s-step" value="0" class="val-box" style="width:100%; height: 28px;"></div>
+            </div>
+        </div>
+        <div class="panel-section panel-adjust">
+            <h3 class="adjust-title">被试匹配面板</h3>
+            <input type="range" id="l-slider" min="-12" max="12" value="0" step="0.1" style="width:100%; height:20px; margin-bottom:10px;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--gray); font-weight: 500;">
+                <span>[←] 向左偏转</span><span style="background:#eef2ff; padding:2px 8px; border-radius:4px; color:var(--primary)">使线平行</span><span>[→] 向右偏转</span>
+            </div>
+        </div>
+        <div class="panel-section panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">确认保存 (Enter)</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出结果</button>
+            <button class="btn btn-reset" onclick="clearTable()">重置</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-cross-angle': false, 'v-spacing': false, 'v-gap': false, 'v-short-l': false, 'v-short-w': false };
+        function bindSync(id) {
+            const s = document.getElementById(id + '-s'), n = document.getElementById(id + '-n');
+            s.oninput = () => { n.value = s.value; render(); };
+            n.oninput = () => { s.value = n.value; render(); };
+        }
+        function toggleLock(id) {
+            activeLocks[id] = !activeLocks[id];
+            document.getElementById('lock-' + id).classList.toggle('active');
+            document.getElementById(id + '-s').disabled = activeLocks[id];
+            document.getElementById(id + '-n').disabled = activeLocks[id];
+        }
+        function render() {
+            const crossAngle = parseFloat(document.getElementById('v-cross-angle-s').value);
+            const spacing = parseFloat(document.getElementById('v-spacing-s').value);
+            const gap = parseFloat(document.getElementById('v-gap-s').value);
+            const sL = parseFloat(document.getElementById('v-short-l-s').value);
+            const sW = parseFloat(document.getElementById('v-short-w-s').value);
+            const color = document.getElementById('v-color').value;
+            const mode = document.getElementById('v-mode').value;
+            const adjustAngle = parseFloat(document.getElementById('l-slider').value);
+            const stage = document.getElementById('stage');
+            stage.innerHTML = '';
+            for (let i = -1.5; i <= 1.5; i++) {
+                const line = document.createElement('div');
+                line.className = 'long-line';
+                line.style.left = 'calc(50% + ' + (i * gap) + 'px)';
+                line.style.backgroundColor = color;
+                const bias = (Math.abs(i) % 2 !== 0.5) ? adjustAngle : -adjustAngle;
+                line.style.transform = 'rotate(' + bias + 'deg)';
+                const numShorts = Math.floor(800 / spacing);
+                for (let j = 0; j < numShorts; j++) {
+                    const s = document.createElement('div');
+                    s.className = 'short-line';
+                    s.style.width = sL + 'px'; s.style.height = sW + 'px';
+                    s.style.backgroundColor = color;
+                    s.style.left = 'calc(50% - ' + (sL/2) + 'px)';
+                    let sRot = crossAngle;
+                    if (mode === 'alternate' && (i + 1.5) % 2 !== 0) sRot = -crossAngle;
+                    s.style.top = (j * spacing) + 'px';
+                    s.style.transform = 'rotate(' + sRot + 'deg)';
+                    line.appendChild(s);
+                }
+                stage.appendChild(line);
+            }
+        }
+function doRecord() {
+            try {
+                // 自动识别颜色下拉框的 ID
+                var colorEl = document.getElementById('v-color') || document.getElementById('v-scheme');
+                var schemeVal = colorEl ? colorEl.selectedOptions[0].text : "默认";
+
+                const data = {
+                    id: Date.now(),
+                    // 1. 颜色：统一使用 scheme 键名
+                    scheme: schemeVal, 
+                    // 2-8. 其余数据：直接取值，不再手动加单位（防止重复）
+                    crossAngle: document.getElementById('v-cross-angle-s').value,
+                    mode: document.getElementById('v-mode').selectedOptions[0].text,
+                    spacing: document.getElementById('v-spacing-s').value,
+                    axisDist: document.getElementById('v-gap-s').value,
+                    lineLen: document.getElementById('v-short-l-s').value,
+                    lineWidth: document.getElementById('v-short-w-s').value,
+                    matchAngle: document.getElementById('l-slider').value
+                };
+
+                results.push(data);
+                updateTable();
+
+                // 自动步进逻辑
+                if (typeof activeLocks !== 'undefined' && !activeLocks['v-cross-angle']) {
+                    var stepEl = document.getElementById('s-step');
+                    if (stepEl && parseFloat(stepEl.value) !== 0) {
+                        var s = document.getElementById('v-cross-angle-s');
+                        var n = document.getElementById('v-cross-angle-n');
+                        if (s && n) {
+                            s.value = parseFloat(s.value) + parseFloat(stepEl.value);
+                            n.value = s.value;
+                        }
+                    }
+                }
+
+                document.getElementById('l-slider').value = 0;
+                if (typeof render === 'function') { render(); } else if (typeof draw === 'function') { draw(); }
+
+            } catch (err) {
+                console.error("保存失败:", err);
+            }
+        }
+
+        function updateTable() {
+            var tbody = document.getElementById('log');
+            if (!tbody) return;
+            tbody.innerHTML = "";
+
+            results.forEach(function(r, i) {
+                // 严格 9 项：序号, 颜色(r.scheme), 交叉角, 模式, 间距, 轴距, 短线长, 短线宽, 匹配角
+                var row = '<tr>' +
+                    '<td>' + (i + 1) + '</td>' +
+                    '<td>' + r.scheme + '</td>' +       // 修正这里：由 r.color 改为 r.scheme
+                    '<td>' + r.crossAngle + '</td>' +
+                    '<td>' + r.mode + '</td>' +
+                    '<td>' + r.spacing + '</td>' +
+                    '<td>' + r.axisDist + '</td>' +
+                    '<td>' + r.lineLen + '</td>' +
+                    '<td>' + r.lineWidth + '</td>' +
+                    '<td><b>' + r.matchAngle + '</b></td>' +
+                    '<td><button onclick="deleteRow(' + r.id + ')" style="border:none; background:none; color:#ef4444; cursor:pointer">×</button></td>' +
+                    '</tr>';
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+        }
+    // --- 严格还原原始实验 9 项数据顺序 (防崩溃版) ---
+        function doExport() {
+        if (results.length === 0) return alert("暂无实验数据");
+
+        var exportData = results.map(function(r, i) {
+            // 严格遵循你指定的 9 项原始数据及其物理顺序
+            return {
+                "序号": i + 1,
+                "颜色": r.scheme,           // 对应实验配色
+                "交叉角": r.crossAngle + "°",
+                "模式": r.mode,             // 对应实验模式
+                "间距": r.spacing + "px",
+                "轴距": r.axisDist + "px",   // 对应主轴间距
+                "短线长": r.lineLen + "px",  // 对应干扰短线长度
+                "短线宽": r.lineWidth + "px",// 对应干扰短线粗细
+                "匹配角": r.matchAngle + "°"
+            };
+        });
+
+        var ws = XLSX.utils.json_to_sheet(exportData);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "策尔纳原始数据");
+        XLSX.writeFile(wb, "Zollner_Original_Data_" + Date.now() + ".xlsx");
+    }
+        ['v-cross-angle', 'v-spacing', 'v-gap', 'v-short-l', 'v-short-w'].forEach(bindSync);
+        document.getElementById('l-slider').oninput = render;
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 0.1; render(); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 0.1; render(); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = render;
+    <\/script>
+</body>
+</html>`;
+
+STORAGE['zollner'] = decodeURIComponent(escape(window.atob(window.btoa(unescape(encodeURIComponent(zollner_raw))))));
+
+
+// --- 模块 6: 赫曼方格 ---
+const hermann_raw = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1000px; --stage-h: 600px; --primary: #4f46e5; --success: #10b981; --danger: #ef4444; --gray: #94a3b8; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 15px; margin: 0; }
+        .top-container { display: flex; gap: 15px; width: 1450px; height: var(--stage-h); margin-bottom: 20px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: #ffffff; border: 2px solid #1e293b; border-radius: 12px; display: flex; justify-content: center; align-items: center; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; }
+        #grid-container { display: grid; transition: background 0.2s; }
+        .grid-item { transition: background 0.2s; }
+        .data-panel { flex: 1; background: white; padding: 15px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; min-width: 0; }
+        .reference-bar { display: flex; height: 40px; border-radius: 4px; overflow: hidden; margin-top: 10px; border: 1px solid #cbd5e1; }
+        .ref-unit { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; border-right: 1px solid rgba(0,0,0,0.05); }
+        .ref-dot { position: absolute; width: 10px; height: 10px; border-radius: 50%; }
+        .bottom-container { display: flex; gap: 15px; width: 1450px; align-items: stretch; }
+        .panel-vars { flex: 1.5; background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-adjust { flex: 2.2; background: #fdfdfd; padding: 18px; border-radius: 12px; border: 1px solid #c7d2fe; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.6; background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+        .control-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 15px; }
+        .input-header { display: flex; justify-content: space-between; align-items: center; }
+        .lock-btn { cursor: pointer; border: 1px solid #ddd; background: #fff; padding: 0px 4px; border-radius: 4px; font-size: 9px; color: var(--gray); }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .input-group { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+        .input-group input[type="range"] { flex: 1; height: 4px; }
+        .input-group input[type="number"], select { width: 100%; padding: 4px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.8rem; }
+        .num-in { width: 55px !important; text-align: center; }
+        label { font-weight: 600; font-size: 0.75rem; color: #475569; display: block; }
+        h3 { margin: 0 0 10px 0; color: #1e293b; border-left: 4px solid var(--primary); padding-left: 10px; font-size: 0.85rem; }
+        .large-slider { width: 100%; height: 12px; cursor: pointer; accent-color: var(--primary); margin: 15px 0; }
+        .btn { padding: 8px; cursor: pointer; border: none; border-radius: 6px; font-weight: bold; color: white; font-size: 0.75rem; transition: 0.2s; }
+        .btn-save { background: var(--primary); height: 50px; font-size: 0.85rem; }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: white; color: var(--danger); border: 1px solid var(--danger); }
+        .filter-zone { background: #f8fafc; padding: 6px; border-radius: 6px; margin-bottom: 8px; font-size: 9px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; border: 1px dashed #cbd5e1; }
+        .table-wrapper { flex: 1; overflow-y: auto; border: 1px solid #f1f5f9; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+        th, td { padding: 6px 2px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+        .col-hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 5px 0 15px 0;">赫曼方格视错觉（Hermann Grid Illusion）科研终端</h2>
+    <div class="top-container">
+        <div id="stage"><div id="grid-container"></div></div>
+        <div class="data-panel">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                <h3>实验结果序列</h3>
+                <span style="font-size:10px; color:#94a3b8;">有效样本: <b id="counter" style="color:var(--primary)">0</b></span>
+            </div>
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 颜色组合</label>
+                <label><input type="checkbox" id="f-2" checked onchange="updateTable()"> 规模</label>
+                <label><input type="checkbox" id="f-3" checked onchange="updateTable()"> 尺寸</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 间隙</label>
+                <label><input type="checkbox" id="f-5" checked onchange="updateTable()"> 对比</label>
+                <label><input type="checkbox" id="f-6" checked onchange="updateTable()"> 强度得分</label>
+            </div>
+            <div class="table-wrapper">
+                <table id="main-table">
+                    <thead>
+                        <tr><th style="width:25px;">序</th><th id="th-1">颜色</th><th id="th-2">规模</th><th id="th-3">尺寸</th><th id="th-4">间隙</th><th id="th-5">对比</th><th id="th-6" style="width:45px;">得分</th><th style="width:30px;">删</th></tr>
+                    </thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-vars">
+            <h3>自变量配置</h3>
+            <div class="control-grid">
+                <div class="item"><label>方块颜色</label><select id="v-color-block" onchange="render()"><option value="#ffffff">白色</option><option value="#000000" selected>黑色</option><option value="#ef4444">红色</option><option value="#3b82f6">蓝色</option></select></div>
+                <div class="item"><label>线条颜色</label><select id="v-color-line" onchange="render()"><option value="#ffffff" selected>白色</option><option value="#000000">黑色</option><option value="#ef4444">红色</option><option value="#3b82f6">蓝色</option></select></div>
+                <div class="item"><div class="input-header"><label>规模</label><button class="lock-btn" id="lock-v-count" onclick="toggleLock('v-count')">锁定</button></div><div class="input-group"><input type="range" id="v-count-s" min="3" max="9" value="6"><input type="number" id="v-count-n" value="6" class="num-in"></div></div>
+                <div class="item"><div class="input-header"><label>方块(px)</label><button class="lock-btn" id="lock-v-size" onclick="toggleLock('v-size')">锁定</button></div><div class="input-group"><input type="range" id="v-size-s" min="20" max="100" value="60"><input type="number" id="v-size-n" value="60" class="num-in"></div></div>
+                <div class="item"><div class="input-header"><label>线宽(px)</label><button class="lock-btn" id="lock-v-gap" onclick="toggleLock('v-gap')">锁定</button></div><div class="input-group"><input type="range" id="v-gap-s" min="1" max="25" value="10"><input type="number" id="v-gap-n" value="10" class="num-in"></div></div>
+                <div class="item"><div class="input-header"><label>对比(%)</label><button class="lock-btn" id="lock-v-contrast" onclick="toggleLock('v-contrast')">锁定</button></div><div class="input-group"><input type="range" id="v-contrast-s" min="10" max="100" value="100"><input type="number" id="v-contrast-n" value="100" class="num-in"></div></div>
+            </div>
+        </div>
+        <div class="panel-adjust">
+            <h3>主观强度评估 & 对照尺</h3>
+            <div style="padding: 0 10px;">
+                <div id="ref-bar" class="reference-bar"></div>
+                <input type="range" id="l-slider" min="0" max="10" value="5" step="0.5" class="large-slider">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:10px; color:var(--gray);">[0] 无感</span>
+                    <span id="l-val-hint" style="color:var(--primary); font-weight:bold; font-size:1.2rem; background:#eef2ff; padding:2px 12px; border:1px solid var(--primary); border-radius:4px;">5.0</span>
+                    <span style="font-size:10px; color:var(--gray);">[10] 极强</span>
+                </div>
+            </div>
+        </div>
+        <div class="panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">保存 (Enter)</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出 XLSX</button>
+            <button class="btn btn-reset" onclick="clearAll()">重置</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-count': false, 'v-size': false, 'v-gap': false, 'v-contrast': false };
+        function toggleLock(id) {
+            activeLocks[id] = !activeLocks[id];
+            const btn = document.getElementById('lock-' + id);
+            btn.classList.toggle('active'); btn.innerText = activeLocks[id] ? "🔒" : "锁定";
+            document.getElementById(id + '-s').disabled = activeLocks[id];
+            document.getElementById(id + '-n').disabled = activeLocks[id];
+        }
+        function bindSync(rangeId, numberId) {
+            const r = document.getElementById(rangeId), n = document.getElementById(numberId);
+            r.oninput = () => { n.value = r.value; render(); };
+            n.oninput = () => { r.value = n.value; render(); };
+        }
+        function updateRefBar(blockCol, lineCol) {
+            const bar = document.getElementById('ref-bar'); bar.style.backgroundColor = lineCol; bar.innerHTML = '';
+            for(let i=0; i<=10; i++) {
+                const unit = document.createElement('div'); unit.className = 'ref-unit';
+                const dot = document.createElement('div'); dot.className = 'ref-dot';
+                dot.style.backgroundColor = blockCol; dot.style.opacity = (i / 10) * 0.7;
+                unit.appendChild(dot); bar.appendChild(unit);
+            }
+        }
+        function render() {
+            const blockCol = document.getElementById('v-color-block').value;
+            const lineCol = document.getElementById('v-color-line').value;
+            const count = parseInt(document.getElementById('v-count-n').value);
+            const size = parseInt(document.getElementById('v-size-n').value);
+            const gap = parseInt(document.getElementById('v-gap-n').value);
+            const contrast = parseInt(document.getElementById('v-contrast-n').value) / 100;
+            const container = document.getElementById('grid-container');
+            container.style.gridTemplateColumns = 'repeat(' + count + ', ' + size + 'px)';
+            container.style.gap = gap + 'px'; container.style.padding = gap + 'px';
+            container.style.backgroundColor = lineCol; container.style.opacity = contrast;
+            container.innerHTML = '';
+            for (let i = 0; i < count * count; i++) {
+                const div = document.createElement('div'); div.className = 'grid-item';
+                div.style.width = size + 'px'; div.style.height = size + 'px';
+                div.style.backgroundColor = blockCol; container.appendChild(div);
+            }
+            updateRefBar(blockCol, lineCol);
+        }
+        function doRecord() {
+            const score = document.getElementById('l-slider').value;
+            const bText = document.getElementById('v-color-block').selectedOptions[0].text;
+            const lText = document.getElementById('v-color-line').selectedOptions[0].text;
+            results.push({
+                id: Date.now(), color: bText + '/' + lText,
+                count: document.getElementById('v-count-n').value + "x" + document.getElementById('v-count-n').value,
+                size: document.getElementById('v-size-n').value + "px",
+                gap: document.getElementById('v-gap-n').value + "px",
+                contrast: document.getElementById('v-contrast-n').value + "%", score: score
+            });
+            updateTable();
+            const stage = document.getElementById('stage'); stage.style.borderColor = "#10b981";
+            setTimeout(() => stage.style.borderColor = "#1e293b", 200);
+        }
+        function updateTable() {
+            for(let i=1; i<=6; i++) {
+                const show = document.getElementById('f-'+i).checked;
+                document.getElementById('th-'+i).className = show ? '' : 'col-hidden';
+            }
+            const tbody = document.getElementById('log'); tbody.innerHTML = "";
+            results.forEach((r, index) => {
+                const s = (idx) => document.getElementById('f-'+idx).checked ? '' : 'col-hidden';
+                const row = '<tr><td>'+(index+1)+'</td>' +
+                    '<td class="'+s(1)+'">'+r.color+'</td><td class="'+s(2)+'">'+r.count+'</td>' +
+                    '<td class="'+s(3)+'">'+r.size+'</td><td class="'+s(4)+'">'+r.gap+'</td>' +
+                    '<td class="'+s(5)+'">'+r.contrast+'</td><td class="'+s(6)+'" style="color:#4f46e5;font-weight:bold">'+r.score+'</td>' +
+                    '<td><button onclick="deleteItem('+r.id+')" style="border:none;background:none;cursor:pointer;color:#94a3b8">×</button></td></tr>';
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+            document.getElementById('counter').innerText = results.length;
+        }
+        function deleteItem(id) { results = results.filter(i => i.id !== id); updateTable(); }
+        function doExport() {
+    if (!results.length) return alert("暂无数据");
+    const exportData = results.map((r, i) => ({
+        "序号": i + 1,
+        "颜色组合": r.color,
+        "矩阵规模": r.count,
+        "方块尺寸": r.size,
+        "线条宽度": r.gap,
+        "对比度": r.contrast,
+        "主观得分": r.score
+    }));
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "实验数据");
+    XLSX.writeFile(wb, "Hermann_Grid_Results.xlsx");
+}
+        function clearAll() { if(confirm("确定？")) { results = []; updateTable(); } }
+        bindSync('v-count-s', 'v-count-n'); bindSync('v-size-s', 'v-size-n');
+        bindSync('v-gap-s', 'v-gap-n'); bindSync('v-contrast-s', 'v-contrast-n');
+        document.getElementById('l-slider').oninput = (e) => { document.getElementById('l-val-hint').innerText = parseFloat(e.target.value).toFixed(1); };
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 0.5; s.oninput({target:s}); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 0.5; s.oninput({target:s}); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = render;
+    <\/script>
+</body>
+</html>`;
+
+STORAGE['hermann'] = decodeURIComponent(escape(window.atob(window.btoa(unescape(encodeURIComponent(hermann_raw))))));
+
+
+// --- 模块 7: 弗雷泽螺旋 ---
+const fraser_raw = `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"><\/script>
+    <style>
+        :root { --stage-w: 1000px; --stage-h: 600px; --primary: #0e7490; --success: #10b981; --danger: #ef4444; --gray: #64748b; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f1f5f9; display: flex; flex-direction: column; align-items: center; padding: 10px; margin: 0; overflow-x: hidden; }
+        .top-container { display: flex; gap: 15px; width: 1480px; height: var(--stage-h); margin-bottom: 15px; }
+        #stage { flex: 0 0 var(--stage-w); height: 100%; background: #7f7f7f; border: 2px solid #1e293b; border-radius: 12px; position: relative; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+        canvas { position: absolute; top: 0; left: 0; }
+        .data-panel { flex: 1; background: white; padding: 12px; border-radius: 12px; border: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+        .filter-zone { background: #f8fafc; padding: 8px; border-radius: 8px; margin-bottom: 10px; font-size: 11px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; border: 1px solid #e2e8f0; }
+        .table-wrapper { flex: 1; overflow-y: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 10px; table-layout: fixed; }
+        th, td { padding: 6px 1px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+        th { background: #f1f5f9; position: sticky; top: 0; z-index: 5; }
+        .col-hidden { display: none !important; }
+        .bottom-container { display: flex; gap: 12px; width: 1480px; align-items: stretch; }
+        .panel-section { background: white; padding: 18px; border-radius: 12px; border: 1px solid #e2e8f0; }
+        .panel-vars { flex: 3.2; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        .panel-adjust { flex: 1.2; background: #f0fdfa; border: 1px solid #99f6e4; display: flex; flex-direction: column; justify-content: center; }
+        .panel-btns { flex: 0.6; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+        label { font-size: 13px; font-weight: 700; color: #0f172a; display: block; margin-bottom: 4px; }
+        .val-box { width: 45px; text-align: center; font-size: 12px; border: 1px solid #cbd5e1; border-radius: 4px; }
+        select { padding: 5px; border-radius: 4px; border: 1px solid #cbd5e1; font-size: 12px; width: 100%; cursor: pointer; }
+        .input-row { display: flex; align-items: center; gap: 8px; }
+        input[type="range"] { flex: 1; accent-color: var(--primary); cursor: pointer; }
+        .btn { padding: 12px; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-save { background: var(--primary); height: 60px; font-size: 15px; }
+        .btn-xlsx { background: var(--success); }
+        .btn-reset { background: #fff; color: var(--danger); border: 1px solid var(--danger); }
+        .lock-btn { cursor: pointer; border: 1px solid #cbd5e1; background: #fff; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+        .lock-btn.active { background: #fee2e2; color: var(--danger); border-color: var(--danger); }
+        .adjust-title { margin-bottom: 10px; font-size: 0.95rem; border-left: 5px solid var(--primary); padding-left: 10px; color: #1e293b; }
+    </style>
+</head>
+<body>
+    <h2 style="color:#1e293b; margin: 10px 0; font-weight: 800;">弗雷泽螺旋错觉（Fraser Spiral）科研终端</h2>
+    <div class="top-container">
+        <div id="stage"><canvas id="mainCanvas"></canvas></div>
+        <div class="data-panel">
+            <div class="filter-zone">
+                <label><input type="checkbox" id="f-1" checked onchange="updateTable()"> 环数</label>
+                <label><input type="checkbox" id="f-align" checked onchange="updateTable()"> 一致性</label>
+                <label><input type="checkbox" id="f-width" checked onchange="updateTable()"> 粗细</label>
+                <label><input type="checkbox" id="f-color" checked onchange="updateTable()"> 配色</label>
+                <label><input type="checkbox" id="f-3" checked onchange="updateTable()"> 基准角</label>
+                <label><input type="checkbox" id="f-4" checked onchange="updateTable()"> 匹配角</label>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead><tr><th style="width:25px">序</th><th id="th-1">环数</th><th id="th-align">一致性</th><th id="th-width">粗细</th><th id="th-color">配色</th><th id="th-3">设偏角</th><th id="th-4">匹配偏角</th><th style="width:25px">删</th></tr></thead>
+                    <tbody id="log"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="bottom-container">
+        <div class="panel-section panel-vars">
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;"><label>一致性系数</label><button class="lock-btn" id="lock-v-align" onclick="toggleLock('v-align')">锁定</button></div>
+                <div class="input-row"><input type="range" id="v-align-s" min="-1" max="1" value="-1" step="0.1"><input type="number" id="v-align-n" class="val-box" value="-1" step="0.1"></div>
+                <div style="margin-top:15px"><label>配色方案</label><select id="v-scheme" onchange="draw()"><option value="bw">经典 (黑/白)</option><option value="yb">高对比 (黄/蓝)</option><option value="rg">视觉补偿 (红/绿)</option><option value="gray">灰阶</option></select></div>
+            </div>
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;"><label>基准偏移角 (°)</label><button class="lock-btn" id="lock-v-bias" onclick="toggleLock('v-bias')">锁定</button></div>
+                <div class="input-row"><input type="range" id="v-bias-s" min="5" max="45" value="15"><input type="number" id="v-bias-n" class="val-box" value="15"></div>
+                <div style="margin-top:15px"><label>圆环数量</label><div class="input-row"><input type="range" id="v-rings-s" min="3" max="15" value="8"><input type="number" id="v-rings-n" class="val-box" value="8"></div></div>
+            </div>
+            <div>
+                <div style="display:flex; justify-content:space-between; align-items:center;"><label>线段粗细 (px)</label><button class="lock-btn" id="lock-v-width" onclick="toggleLock('v-width')">锁定</button></div>
+                <div class="input-row"><input type="range" id="v-width-s" min="1" max="25" value="8"><input type="number" id="v-width-n" class="val-box" value="8"></div>
+                <div style="margin-top:15px"><label>自动步进</label><input type="number" id="s-step" value="0" class="val-box" style="width:100%; height:28px"></div>
+            </div>
+        </div>
+        <div class="panel-section panel-adjust">
+            <h3 class="adjust-title">被试匹配面板</h3>
+            <label>调节范围：±60°</label>
+            <input type="range" id="l-slider" min="-60" max="60" value="0" step="0.5" style="width:100%; height:25px;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--gray);"><span>负向补偿</span><span style="background:#ccfbf1; padding:2px 8px; border-radius:4px; color:#0f766e">螺旋消失为止</span><span>正向增强</span></div>
+        </div>
+        <div class="panel-section panel-btns">
+            <button class="btn btn-save" onclick="doRecord()">确认保存</button>
+            <button class="btn btn-xlsx" onclick="doExport()">导出结果</button>
+            <button class="btn btn-reset" onclick="clearTable()">重置</button>
+        </div>
+    </div>
+    <script>
+        let results = [];
+        let activeLocks = { 'v-bias': false, 'v-align': false, 'v-width': false };
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        function initCanvas() { canvas.width = 1000; canvas.height = 600; draw(); }
+        function bindSync(id) {
+            const s = document.getElementById(id + '-s'), n = document.getElementById(id + '-n');
+            s.oninput = () => { n.value = s.value; draw(); };
+            n.oninput = () => { s.value = n.value; draw(); };
+        }
+        function toggleLock(id) { activeLocks[id] = !activeLocks[id]; document.getElementById('lock-' + id).classList.toggle('active'); document.getElementById(id + '-s').disabled = activeLocks[id]; document.getElementById(id + '-n').disabled = activeLocks[id]; }
+        function getColors(scheme, index) {
+            const palettes = { 'bw': ['#000000', '#ffffff'], 'yb': ['#1e3a8a', '#facc15'], 'rg': ['#b91c1c', '#15803d'], 'gray': ['#404040', '#d4d4d4'] };
+            const colors = palettes[scheme]; return index % 2 === 0 ? colors[0] : colors[1];
+        }
+        function draw() {
+            const rings = parseInt(document.getElementById('v-rings-n').value);
+            const baseBias = parseInt(document.getElementById('v-bias-n').value);
+            const alignRatio = parseFloat(document.getElementById('v-align-n').value);
+            const adjust = parseFloat(document.getElementById('l-slider').value);
+            const lineWidth = parseInt(document.getElementById('v-width-n').value);
+            const scheme = document.getElementById('v-scheme').value;
+            ctx.clearRect(0, 0, 1000, 600); const cX = 500, cY = 300;
+            for (let r = 1; r <= rings; r++) {
+                const radius = r * 35; const segments = r * 20 + 20;
+                let ringMultiplier = (r % 2 === 0) ? alignRatio : 1;
+                const currentTotalBias = (baseBias + adjust) * ringMultiplier * (Math.PI / 180);
+                for (let i = 0; i < segments; i++) {
+                    const angle = (i / segments) * Math.PI * 2;
+                    const startX = cX + Math.cos(angle) * radius; const startY = cY + Math.sin(angle) * radius;
+                    const segLen = 15 + r * 2; const segAngle = angle + currentTotalBias;
+                    const endX = startX + Math.cos(segAngle) * segLen; const endY = startY + Math.sin(segAngle) * segLen;
+                    ctx.beginPath(); ctx.lineWidth = lineWidth; ctx.lineCap = 'round';
+                    ctx.strokeStyle = getColors(scheme, i); ctx.moveTo(startX, startY); ctx.lineTo(endX, endY); ctx.stroke();
+                }
+            }
+        }
+        function doRecord() {
+            results.push({
+                id: Date.now(), rings: document.getElementById('v-rings-n').value,
+                alignment: document.getElementById('v-align-n').value, width: document.getElementById('v-width-n').value + "px",
+                scheme: document.getElementById('v-scheme').selectedOptions[0].text,
+                baseBias: document.getElementById('v-bias-n').value + "°", matchBias: document.getElementById('l-slider').value + "°"
+            });
+            updateTable();
+            if(!activeLocks['v-bias']) {
+                const step = parseFloat(document.getElementById('s-step').value);
+                if(step !== 0) { const s = document.getElementById('v-bias-s'), n = document.getElementById('v-bias-n'); s.value = parseFloat(s.value) + step; n.value = s.value; }
+            }
+            document.getElementById('l-slider').value = 0; draw();
+        }
+        function updateTable() {
+            const f = { '1': document.getElementById('f-1').checked, 'align': document.getElementById('f-align').checked, 'width': document.getElementById('f-width').checked, 'color': document.getElementById('f-color').checked, '3': document.getElementById('f-3').checked, '4': document.getElementById('f-4').checked };
+            ['1', 'align', 'width', 'color', '3', '4'].forEach(k => document.getElementById('th-'+k).className = f[k] ? '' : 'col-hidden');
+            const tbody = document.getElementById('log'); tbody.innerHTML = "";
+            results.forEach((r, i) => {
+                const row = '<tr><td>'+(i+1)+'</td>' +
+                    '<td class="'+(f['1']?'':'col-hidden')+'">'+r.rings+'</td><td class="'+(f['align']?'':'col-hidden')+'">'+r.alignment+'</td>' +
+                    '<td class="'+(f['width']?'':'col-hidden')+'">'+r.width+'</td><td class="'+(f['color']?'':'col-hidden')+'">'+r.scheme+'</td>' +
+                    '<td class="'+(f['3']?'':'col-hidden')+'">'+r.baseBias+'</td><td class="'+(f['4']?'':'col-hidden')+'"><b>'+r.matchBias+'</b></td>' +
+                    '<td><button onclick="deleteRow('+r.id+')" style="border:none;background:none;color:#ef4444;cursor:pointer">×</button></td></tr>';
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+        }
+        function deleteRow(id) { results = results.filter(r => r.id !== id); updateTable(); }
+        function clearTable() { if(confirm("确定？")) { results = []; updateTable(); } }
+       // --- 弗雷泽螺旋：中文表头防崩溃版 ---
+    function doExport() {
+        if(results.length === 0) return alert("暂无数据可供导出");
+        
+        var exportData = results.map(function(r, i) {
+            return {
+                "序号": i + 1,
+                "圆环总数": r.rings,
+                "一致性系数": r.alignment,
+                "线段粗细": r.width,
+                "配色方案": r.scheme,
+                "设定基准角": r.baseBias,
+                "被试匹配角": r.matchBias
+            };
+        });
+
+        var ws = XLSX.utils.json_to_sheet(exportData);
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "实验记录");
+        XLSX.writeFile(wb, "Fraser_Spiral_Results_" + Date.now() + ".xlsx");
+    }
+        ['v-rings', 'v-bias', 'v-align', 'v-width'].forEach(bindSync);
+        document.getElementById('l-slider').oninput = draw;
+        window.onkeydown = (e) => {
+            const s = document.getElementById('l-slider');
+            if (e.key === 'ArrowLeft') { s.value = parseFloat(s.value) - 0.5; draw(); }
+            if (e.key === 'ArrowRight') { s.value = parseFloat(s.value) + 0.5; draw(); }
+            if (e.key === 'Enter') doRecord();
+        };
+        window.onload = initCanvas;
+    <\/script>
+</body>
+</html>`;
+
+STORAGE['fraser'] = decodeURIComponent(escape(window.atob(window.btoa(unescape(encodeURIComponent(fraser_raw))))));
+
+
+
+</script>
+</body>
+</html>
